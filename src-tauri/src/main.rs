@@ -5,6 +5,7 @@ mod cal;
 mod complex;
 mod model;
 mod nanovna;
+mod sweep;
 
 use nanovna::BoardInfo;
 
