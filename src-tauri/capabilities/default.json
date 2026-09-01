@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. Only the core defaults are needed — the app talks to the backend through #[tauri::command]s, which bypass the ACL.",
+  "description": "Main window. Core defaults plus the file-save dialog for exporting readings.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

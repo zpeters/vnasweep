@@ -1,11 +1,9 @@
 //! Minimal NanoVNA serial link: find the device, talk to its `ch> ` shell,
-//! and read back board identity. This is the only module that touches
+//! and read back a raw S11 sweep. This is the only module that touches
 //! `serialport`; everything above it works with the returned data.
 
 use std::io::Write;
 use std::time::{Duration, Instant};
-
-use serde::Serialize;
 
 use crate::model::{RawPoint, RawTrace};
 
@@ -15,44 +13,6 @@ const NANOVNA_PID: u16 = 0x5740;
 
 /// The NanoVNA shell prints this when it is ready for the next command.
 const PROMPT: &[u8] = b"ch> ";
-
-/// What `board_info` hands back to the UI.
-#[derive(Debug, Clone, Serialize)]
-pub struct BoardInfo {
-    /// The serial port the device was found on.
-    pub port: String,
-    /// Output of `version` (a single line, e.g. `1.2.27`).
-    pub version: String,
-    /// Output of `info` (multi-line board / firmware dump).
-    pub info: String,
-}
-
-/// Connect to the attached NanoVNA and read `version` + `info`.
-///
-/// Blocking: opens the port, does a short serial conversation, closes it.
-/// Call it off the UI thread.
-pub fn board_info() -> Result<BoardInfo, String> {
-    let port_name = autodetect()?;
-
-    let mut port = serialport::new(&port_name, 115_200)
-        .timeout(Duration::from_millis(300))
-        .open()
-        .map_err(|e| format!("opening {port_name}: {e}"))?;
-
-    // Wake the shell and drain anything it was mid-sending.
-    port.write_all(b"\r").map_err(io_err)?;
-    port.flush().map_err(io_err)?;
-    let _ = read_until_prompt(port.as_mut(), Duration::from_millis(500));
-
-    let version = run_command(port.as_mut(), "version")?;
-    let info = run_command(port.as_mut(), "info")?;
-
-    Ok(BoardInfo {
-        port: port_name,
-        version,
-        info,
-    })
-}
 
 /// Send one shell command, return its output with the echoed command line and
 /// the trailing prompt stripped.
@@ -136,7 +96,11 @@ fn parse_sweep(frequencies: &str, data: &str) -> Result<RawTrace, String> {
         .lines()
         .filter_map(|l| {
             let t = l.trim();
-            if t.is_empty() { None } else { t.parse::<u64>().ok() }
+            if t.is_empty() {
+                None
+            } else {
+                t.parse::<u64>().ok()
+            }
         })
         .collect();
 
@@ -187,7 +151,8 @@ pub fn sweep_raw(start_hz: u64, stop_hz: u64, points: u32) -> Result<RawTrace, S
         .map_err(|e| format!("opening {port_name}: {e}"))?;
 
     // Wake the shell, drain anything pending.
-    port.write_all(b"\r").map_err(|e| format!("serial I/O: {e}"))?;
+    port.write_all(b"\r")
+        .map_err(|e| format!("serial I/O: {e}"))?;
     port.flush().map_err(|e| format!("serial I/O: {e}"))?;
     let _ = read_until_prompt(port.as_mut(), Duration::from_millis(500));
 
