@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::model::{RawPoint, RawTrace};
+
 /// STMicroelectronics Virtual COM Port — what the NanoVNA-H enumerates as.
 const NANOVNA_VID: u16 = 0x0483;
 const NANOVNA_PID: u16 = 0x5740;
@@ -127,6 +129,91 @@ fn io_err(e: std::io::Error) -> String {
     format!("serial I/O: {e}")
 }
 
+/// Pair the `frequencies` output (one integer Hz per line) with the `data 0`
+/// output (one `re im` pair per line). Blank lines are ignored.
+fn parse_sweep(frequencies: &str, data: &str) -> Result<RawTrace, String> {
+    let freqs: Vec<u64> = frequencies
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim();
+            if t.is_empty() { None } else { t.parse::<u64>().ok() }
+        })
+        .collect();
+
+    let samples: Vec<(f64, f64)> = data
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split_whitespace();
+            let re = it.next()?.parse::<f64>().ok()?;
+            let im = it.next()?.parse::<f64>().ok()?;
+            Some((re, im))
+        })
+        .collect();
+
+    if freqs.is_empty() {
+        return Err("sweep returned no frequency points".into());
+    }
+    if freqs.len() != samples.len() {
+        return Err(format!(
+            "sweep frequency count ({}) and data count ({}) disagree",
+            freqs.len(),
+            samples.len()
+        ));
+    }
+
+    Ok(RawTrace {
+        points: freqs
+            .into_iter()
+            .zip(samples)
+            .map(|(freq_hz, (re, im))| RawPoint { freq_hz, re, im })
+            .collect(),
+    })
+}
+
+/// One raw (uncorrected) S11 sweep at the given span. Blocking.
+#[allow(dead_code)]
+pub fn sweep_raw(start_hz: u64, stop_hz: u64, points: u32) -> Result<RawTrace, String> {
+    if points == 0 {
+        return Err("sweep needs at least 1 point".into());
+    }
+    if stop_hz <= start_hz {
+        return Err("sweep stop frequency must be above the start".into());
+    }
+
+    let port_name = autodetect()?;
+    let mut port = serialport::new(&port_name, 115_200)
+        .timeout(Duration::from_millis(300))
+        .open()
+        .map_err(|e| format!("opening {port_name}: {e}"))?;
+
+    // Wake the shell, drain anything pending.
+    port.write_all(b"\r").map_err(|e| format!("serial I/O: {e}"))?;
+    port.flush().map_err(|e| format!("serial I/O: {e}"))?;
+    let _ = read_until_prompt(port.as_mut(), Duration::from_millis(500));
+
+    // Disable on-device correction so we read the true raw reflection.
+    run_command(port.as_mut(), "cal off")?;
+
+    // Program the sweep span.
+    run_command(
+        port.as_mut(),
+        &format!("sweep {start_hz} {stop_hz} {points}"),
+    )?;
+
+    // Let at least one full sweep complete before reading. The H sweeps ~2/s;
+    // budget generously. (If this proves flaky, poll a status command instead —
+    // see the device-verification note.)
+    std::thread::sleep(Duration::from_millis(1200));
+
+    let frequencies = run_command(port.as_mut(), "frequencies")?;
+    let data = run_command(port.as_mut(), "data 0")?;
+
+    // Be polite: re-enable device correction for standalone use.
+    let _ = run_command(port.as_mut(), "cal on");
+
+    parse_sweep(&frequencies, &data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::clean_response;
@@ -144,5 +231,39 @@ mod tests {
             clean_response(raw, "info"),
             "Board: NanoVNA-H\nVersion: 1.2.27"
         );
+    }
+}
+
+#[cfg(test)]
+mod sweep_tests {
+    use super::parse_sweep;
+
+    #[test]
+    fn pairs_frequencies_with_samples() {
+        let freqs = "1000000\n2000000\n3000000\n";
+        let data = "0.98 0.03\n-0.10 0.20\n0.00 -0.01\n";
+        let t = parse_sweep(freqs, data).unwrap();
+        assert_eq!(t.points.len(), 3);
+        assert_eq!(t.points[0].freq_hz, 1_000_000);
+        assert!((t.points[1].re + 0.10).abs() < 1e-12);
+        assert!((t.points[2].im + 0.01).abs() < 1e-12);
+    }
+
+    #[test]
+    fn rejects_count_mismatch() {
+        assert!(parse_sweep("1000000\n2000000\n", "0.1 0.2\n").is_err());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(parse_sweep("", "").is_err());
+    }
+
+    #[test]
+    fn tolerates_blank_and_trailing_lines() {
+        let freqs = "\n1000000\n2000000\n\n";
+        let data = "0.1 0.2\n0.3 0.4\n";
+        let t = parse_sweep(freqs, data).unwrap();
+        assert_eq!(t.points.len(), 2);
     }
 }
