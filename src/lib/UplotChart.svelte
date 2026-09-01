@@ -7,23 +7,41 @@
 
   let el: HTMLDivElement;
   let chart: uPlot | undefined;
+  let ro: ResizeObserver | undefined;
+
+  function build() {
+    chart?.destroy();
+    chart = new uPlot(
+      { ...opts, width: el.clientWidth || 600, height: opts.height ?? 340 },
+      data,
+      el,
+    );
+  }
 
   onMount(() => {
-    chart = new uPlot({ ...opts, width: el.clientWidth || 600, height: opts.height ?? 340 }, data, el);
-    const ro = new ResizeObserver(() => {
-      if (chart) chart.setSize({ width: el.clientWidth, height: opts.height ?? 340 });
+    build();
+    ro = new ResizeObserver(() => {
+      chart?.setSize({ width: el.clientWidth, height: opts.height ?? 340 });
     });
     ro.observe(el);
     return () => {
-      ro.disconnect();
+      ro?.disconnect();
       chart?.destroy();
       chart = undefined;
     };
   });
 
+  // Rebuild when opts identity changes (series count / plugins / scales);
+  // otherwise just push new data.
+  let lastOpts: uPlot.Options | undefined;
   $effect(() => {
-    // re-create on opts change (series count / plugins), just setData on data change
-    if (chart && data) chart.setData(data);
+    if (!chart) return;
+    if (opts !== lastOpts) {
+      lastOpts = opts;
+      build();
+    } else {
+      chart.setData(data);
+    }
   });
 </script>
 
