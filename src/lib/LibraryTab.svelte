@@ -18,12 +18,17 @@
   let showCals = $state(false);
 
   async function refresh() {
-    readings = await listReadings();
-    cals = await listCals();
+    try {
+      readings = await listReadings();
+      cals = await listCals();
+    } catch (e) {
+      error = String(e);
+    }
   }
   onMount(refresh);
 
   async function toggle(id: string) {
+    error = null;
     const next = new Set(checked);
     if (next.has(id)) {
       next.delete(id);
@@ -42,30 +47,61 @@
   }
 
   async function doRename(id: string, current: string) {
+    error = null;
     const name = prompt("Rename reading", current);
-    if (name && name.trim()) { await renameReading(id, name.trim()); await refresh(); }
+    if (name && name.trim()) {
+      try {
+        await renameReading(id, name.trim());
+        await refresh();
+      } catch (e) {
+        error = String(e);
+      }
+    }
   }
   async function doDelete(id: string) {
+    error = null;
     if (confirm("Delete this reading? The .s1p and sidecar are removed.")) {
-      await deleteReading(id);
-      const c = new Set(checked); c.delete(id); checked = c;
-      await refresh();
+      try {
+        await deleteReading(id);
+        const c = new Set(checked); c.delete(id); checked = c;
+        await refresh();
+      } catch (e) {
+        error = String(e);
+      }
     }
   }
   async function doExport(id: string) {
-    const dest = await save({ defaultPath: `${id}.s1p`, filters: [{ name: "Touchstone", extensions: ["s1p"] }] });
-    if (dest) { try { await exportReading(id, dest); } catch (e) { error = String(e); } }
+    error = null;
+    try {
+      const dest = await save({ defaultPath: `${id}.s1p`, filters: [{ name: "Touchstone", extensions: ["s1p"] }] });
+      if (dest) { await exportReading(id, dest); }
+    } catch (e) {
+      error = String(e);
+    }
   }
   async function doRenameCal(id: string, current: string) {
+    error = null;
     const name = prompt("Rename calibration", current);
-    if (name && name.trim()) { await renameCal(id, name.trim()); await refresh(); }
+    if (name && name.trim()) {
+      try {
+        await renameCal(id, name.trim());
+        await refresh();
+      } catch (e) {
+        error = String(e);
+      }
+    }
   }
   async function doDeleteCal(id: string) {
-    const n = await calUsage(id);
-    const msg = n > 0
-      ? `${n} reading(s) reference this calibration. They'll keep working but lose the cal name. Delete anyway?`
-      : "Delete this calibration?";
-    if (confirm(msg)) { await deleteCal(id); await refresh(); }
+    error = null;
+    try {
+      const n = await calUsage(id);
+      const msg = n > 0
+        ? `${n} reading(s) reference this calibration. They'll keep working but lose the cal name. Delete anyway?`
+        : "Delete this calibration?";
+      if (confirm(msg)) { await deleteCal(id); await refresh(); }
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   const single = $derived(checked.size === 1 ? loaded.get([...checked][0]) ?? null : null);
