@@ -1,6 +1,8 @@
 //! Data structs shared between the Rust backend and the Svelte frontend.
 //! Mirrored by hand in `src/lib/types.ts`.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,9 +111,27 @@ mod tests {
                 points: 101,
             },
             standards: Standards {
-                open: RawTrace { points: vec![RawPoint { freq_hz: 1_000_000, re: 0.98, im: 0.03 }] },
-                short: RawTrace { points: vec![RawPoint { freq_hz: 1_000_000, re: -0.97, im: -0.02 }] },
-                load: RawTrace { points: vec![RawPoint { freq_hz: 1_000_000, re: 0.01, im: 0.0 }] },
+                open: RawTrace {
+                    points: vec![RawPoint {
+                        freq_hz: 1_000_000,
+                        re: 0.98,
+                        im: 0.03,
+                    }],
+                },
+                short: RawTrace {
+                    points: vec![RawPoint {
+                        freq_hz: 1_000_000,
+                        re: -0.97,
+                        im: -0.02,
+                    }],
+                },
+                load: RawTrace {
+                    points: vec![RawPoint {
+                        freq_hz: 1_000_000,
+                        re: 0.01,
+                        im: 0.0,
+                    }],
+                },
             },
             error_terms: ErrorTerms {
                 e00: vec![[0.01, 0.0]],
