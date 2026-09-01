@@ -1,10 +1,11 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cal;
 mod complex;
 mod model;
 mod nanovna;
+mod store;
 mod sweep;
 
 use nanovna::BoardInfo;

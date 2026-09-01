@@ -60,9 +60,19 @@ pub fn build_trace(raw: &RawTrace, corrected: &[Complex]) -> Vec<TracePoint> {
 pub fn min_swr(trace: &[TracePoint]) -> SwrPoint {
     trace
         .iter()
-        .min_by(|a, b| a.swr.partial_cmp(&b.swr).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|p| SwrPoint { freq_hz: p.freq_hz, swr: p.swr })
-        .unwrap_or(SwrPoint { freq_hz: 0, swr: 999.0 })
+        .min_by(|a, b| {
+            a.swr
+                .partial_cmp(&b.swr)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|p| SwrPoint {
+            freq_hz: p.freq_hz,
+            swr: p.swr,
+        })
+        .unwrap_or(SwrPoint {
+            freq_hz: 0,
+            swr: 999.0,
+        })
 }
 
 pub fn swr_bandwidth(trace: &[TracePoint], threshold: f64) -> Option<Band> {
@@ -72,7 +82,11 @@ pub fn swr_bandwidth(trace: &[TracePoint], threshold: f64) -> Option<Band> {
     let mi = trace
         .iter()
         .enumerate()
-        .min_by(|(_, a), (_, b)| a.swr.partial_cmp(&b.swr).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|(_, a), (_, b)| {
+            a.swr
+                .partial_cmp(&b.swr)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .map(|(i, _)| i)?;
     if trace[mi].swr > threshold {
         return None;
@@ -108,7 +122,11 @@ pub fn swr_bandwidth(trace: &[TracePoint], threshold: f64) -> Option<Band> {
         }
     }
 
-    Some(Band { lo_hz, hi_hz, threshold })
+    Some(Band {
+        lo_hz,
+        hi_hz,
+        threshold,
+    })
 }
 
 #[cfg(test)]
