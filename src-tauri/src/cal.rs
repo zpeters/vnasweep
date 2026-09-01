@@ -68,9 +68,9 @@ pub fn solve_osl(std: &Standards) -> Result<ErrorTerms, String> {
 
 pub fn apply(raw: &RawTrace, terms: &ErrorTerms) -> Result<Vec<Complex>, String> {
     let n = raw.points.len();
-    if terms.e00.len() != n {
+    if terms.e00.len() != n || terms.e11.len() != n || terms.e10e01.len() != n {
         return Err(format!(
-            "sweep has {n} points but the calibration has {}; sweep at the calibration's span",
+            "calibration is internally inconsistent or has {} points but the sweep has {n}",
             terms.e00.len()
         ));
     }
@@ -102,7 +102,13 @@ mod tests {
     }
 
     fn one_point(re: f64, im: f64) -> RawTrace {
-        RawTrace { points: vec![RawPoint { freq_hz: 1_000_000, re, im }] }
+        RawTrace {
+            points: vec![RawPoint {
+                freq_hz: 1_000_000,
+                re,
+                im,
+            }],
+        }
     }
 
     const E00: Complex = Complex::new(0.05, -0.02);
@@ -158,8 +164,16 @@ mod tests {
         let std = Standards {
             open: RawTrace {
                 points: vec![
-                    RawPoint { freq_hz: 1, re: 0.9, im: 0.0 },
-                    RawPoint { freq_hz: 2, re: 0.9, im: 0.0 },
+                    RawPoint {
+                        freq_hz: 1,
+                        re: 0.9,
+                        im: 0.0,
+                    },
+                    RawPoint {
+                        freq_hz: 2,
+                        re: 0.9,
+                        im: 0.0,
+                    },
                 ],
             },
             short: one_point(-0.9, 0.0),
@@ -170,11 +184,47 @@ mod tests {
 
     #[test]
     fn apply_rejects_length_mismatch() {
-        let terms = ErrorTerms { e00: vec![[0.0, 0.0]], e11: vec![[0.0, 0.0]], e10e01: vec![[1.0, 0.0]] };
+        let terms = ErrorTerms {
+            e00: vec![[0.0, 0.0]],
+            e11: vec![[0.0, 0.0]],
+            e10e01: vec![[1.0, 0.0]],
+        };
         let raw = RawTrace {
             points: vec![
-                RawPoint { freq_hz: 1, re: 0.1, im: 0.0 },
-                RawPoint { freq_hz: 2, re: 0.1, im: 0.0 },
+                RawPoint {
+                    freq_hz: 1,
+                    re: 0.1,
+                    im: 0.0,
+                },
+                RawPoint {
+                    freq_hz: 2,
+                    re: 0.1,
+                    im: 0.0,
+                },
+            ],
+        };
+        assert!(apply(&raw, &terms).is_err());
+    }
+
+    #[test]
+    fn apply_rejects_inconsistent_error_terms() {
+        let terms = ErrorTerms {
+            e00: vec![[0.0, 0.0], [0.0, 0.0]],
+            e11: vec![[0.0, 0.0]], // short
+            e10e01: vec![[1.0, 0.0], [1.0, 0.0]],
+        };
+        let raw = RawTrace {
+            points: vec![
+                RawPoint {
+                    freq_hz: 1,
+                    re: 0.1,
+                    im: 0.0,
+                },
+                RawPoint {
+                    freq_hz: 2,
+                    re: 0.1,
+                    im: 0.0,
+                },
             ],
         };
         assert!(apply(&raw, &terms).is_err());
