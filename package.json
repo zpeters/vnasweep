@@ -1,0 +1,30 @@
+{
+  "name": "vnasweep",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "tauri",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "check": "svelte-check --threshold error"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tauri-apps/cli": "^2",
+    "svelte": "^5",
+    "svelte-check": "^4.7.6",
+    "typescript": "^5",
+    "vite": "^5",
+    "vitest": "^2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "fsevents@2.3.3": true
+  }
+}

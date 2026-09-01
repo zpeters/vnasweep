@@ -1,0 +1,9 @@
+.DS_Store
+.direnv/
+.superpowers/
+/target/
+
+# Frontend / Tauri
+node_modules/
+dist/
+src-tauri/gen/schemas/
