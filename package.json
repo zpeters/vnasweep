@@ -21,7 +21,9 @@
     "vitest": "^2"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2"
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "uplot": "^1.6.32"
   },
   "allowScripts": {
     "esbuild@0.21.5": true,
