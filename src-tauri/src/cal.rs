@@ -84,7 +84,13 @@ pub fn apply(raw: &RawTrace, terms: &ErrorTerms) -> Result<Vec<Complex>, String>
 
         // Γa = (Γm - e00) / (e10·e01 + e11·(Γm - e00))
         let d = gm - e00;
-        out.push(d / (a + e11 * d));
+        let g = d / (a + e11 * d);
+        if !g.is_finite() {
+            return Err(format!(
+                "point {i}: correction produced a non-finite reflection coefficient — the calibration may be bad"
+            ));
+        }
+        out.push(g);
     }
     Ok(out)
 }
@@ -203,6 +209,19 @@ mod tests {
                 },
             ],
         };
+        assert!(apply(&raw, &terms).is_err());
+    }
+
+    #[test]
+    fn apply_rejects_non_finite_correction() {
+        // e10e01 = 0 and e11 = 0 ⇒ a + e11*d == 0 for any d ⇒ div yields NaN/Inf.
+        let terms = ErrorTerms {
+            e00: vec![[0.05, -0.02]],
+            e11: vec![[0.0, 0.0]],
+            e10e01: vec![[0.0, 0.0]],
+        };
+        // re != e00.re so d != 0.
+        let raw = one_point(0.5, 0.0);
         assert!(apply(&raw, &terms).is_err());
     }
 

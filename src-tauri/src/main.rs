@@ -102,6 +102,27 @@ async fn sweep(cal_id: String) -> Result<Reading, String> {
     blocking(move || {
         let cal = store::read_cal(&cal_id)?;
         let raw = nanovna::sweep_raw(cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
+        // The cal's error terms are per-point, so the device's returned grid must
+        // match the cal's grid exactly. §5.3 calls this "structural" because we ask
+        // for the cal's span, but nothing has verified on hardware that the device
+        // doesn't quantise or return a grid it wasn't asked for. Check explicitly.
+        let grid = &cal.standards.open.points;
+        if raw.points.len() != grid.len() {
+            return Err(format!(
+                "device returned {} points but calibration '{}' has {}",
+                raw.points.len(),
+                cal.meta.id,
+                grid.len()
+            ));
+        }
+        for (i, (r, g)) in raw.points.iter().zip(grid).enumerate() {
+            if r.freq_hz != g.freq_hz {
+                return Err(format!(
+                    "point {i}: device swept {} Hz but calibration '{}' is at {} Hz — re-run the calibration for this span",
+                    r.freq_hz, cal.meta.id, g.freq_hz
+                ));
+            }
+        }
         let corrected = cal::apply(&raw, &cal.error_terms)?;
         let trace = sweep::build_trace(&raw, &corrected);
         let min_swr = sweep::min_swr(&trace);
@@ -167,13 +188,7 @@ async fn delete_reading(id: String) -> Result<(), String> {
 
 #[tauri::command(rename_all = "snake_case")]
 async fn export_reading(id: String, dest_path: String) -> Result<(), String> {
-    blocking(move || {
-        let src = store::home().join("readings").join(format!("{id}.s1p"));
-        std::fs::copy(&src, &dest_path)
-            .map(|_| ())
-            .map_err(|e| format!("copying {} to {dest_path}: {e}", src.display()))
-    })
-    .await
+    blocking(move || store::export_reading(&id, &dest_path)).await
 }
 
 fn main() {

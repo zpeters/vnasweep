@@ -21,8 +21,12 @@
   const selectedCal = $derived(cals.find((c) => c.id === selectedId) ?? null);
 
   async function refreshCals() {
-    cals = await listCals();
-    if (!selectedId && cals.length) selectedId = cals[0].id;
+    try {
+      cals = await listCals();
+      if (!selectedId && cals.length) selectedId = cals[0].id;
+    } catch (e) {
+      error = String(e);
+    }
   }
   onMount(refreshCals);
 

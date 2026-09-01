@@ -37,7 +37,14 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         ensure_dir(parent)?;
     }
-    let tmp = path.with_extension("tmp");
+    // Derive the temp name from the full filename so siblings that share a stem
+    // (foo.s1p / foo.json) don't collide on one foo.tmp. The leading '.' keeps it
+    // out of json_files() (which filters on the ".json" extension; ".foo.json.tmp"
+    // has extension "tmp").
+    let tmp = match path.file_name().and_then(|s| s.to_str()) {
+        Some(name) => path.with_file_name(format!(".{name}.tmp")),
+        None => return Err(format!("bad path: {}", path.display())),
+    };
     {
         let mut f =
             fs::File::create(&tmp).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
@@ -208,6 +215,13 @@ pub fn delete_reading(id: &str) -> Result<(), String> {
     let b = readings_dir().join(format!("{id}.json"));
     let _ = fs::remove_file(&a);
     fs::remove_file(&b).map_err(|e| format!("deleting {}: {e}", b.display()))
+}
+
+pub fn export_reading(id: &str, dest: &str) -> Result<(), String> {
+    let src = readings_dir().join(format!("{id}.s1p"));
+    fs::copy(&src, dest)
+        .map(|_| ())
+        .map_err(|e| format!("copying {} to {dest}: {e}", src.display()))
 }
 
 // ---- Touchstone -------------------------------------------------------
@@ -477,6 +491,21 @@ mod tests {
         // stats are derived on load, not read from disk:
         assert_eq!(back.min_swr.freq_hz, 2_000_000);
         assert!((back.min_swr.swr - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn export_reading_copies_s1p() {
+        let _h = TempHome::new();
+        write_reading(&sample_reading("r1")).unwrap();
+        let src = home().join("readings/r1.s1p");
+        let dest = home().join("exported.s1p");
+        export_reading("r1", dest.to_str().unwrap()).unwrap();
+        assert!(dest.exists());
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            std::fs::read_to_string(&src).unwrap()
+        );
+        assert!(export_reading("nope", dest.to_str().unwrap()).is_err());
     }
 
     #[test]

@@ -52,6 +52,8 @@
     if (name && name.trim()) {
       try {
         await renameReading(id, name.trim());
+        const m = new Map(loaded); m.delete(id); loaded = m;
+        const c = new Set(checked); c.delete(id); checked = c;
         await refresh();
       } catch (e) {
         error = String(e);
@@ -64,6 +66,7 @@
       try {
         await deleteReading(id);
         const c = new Set(checked); c.delete(id); checked = c;
+        const m = new Map(loaded); m.delete(id); loaded = m;
         await refresh();
       } catch (e) {
         error = String(e);
