@@ -20,6 +20,7 @@
   // second concurrent open fails.
   let live = $state(false);
   let intervalS = $state(2);
+  let threshold = $state(2);              // SWR ceiling for the bandwidth readout
   let lastSweepAt = $state<number | null>(null);
   let now = $state(Date.now());
   let liveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,7 +72,7 @@
     if (!selectedId) return false;
     busy = true; error = null; saved = null;
     try {
-      reading = await sweep(selectedId);
+      reading = await sweep(selectedId, threshold);
       lastSweepAt = Date.now();
       now = lastSweepAt;
       return true;
@@ -224,6 +225,14 @@
         <option value={2}>2 s</option>
         <option value={5}>5 s</option>
         <option value={10}>10 s</option>
+      </select>
+    </label>
+    <label>
+      SWR ≤
+      <select bind:value={threshold}>
+        <option value={1.5}>1.5</option>
+        <option value={2}>2.0</option>
+        <option value={3}>3.0</option>
       </select>
     </label>
     {#if live}

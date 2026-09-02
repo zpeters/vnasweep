@@ -3,7 +3,7 @@
   import type uPlot from "uplot";
   import { save } from "@tauri-apps/plugin-dialog";
   import {
-    listReadings, getReading, renameReading, deleteReading, exportReading,
+    listReadings, getReading, renameReading, deleteReading, exportReading, exportReadingCsv,
     listCals, renameCal, deleteCal, calUsage,
   } from "./api";
   import type { CalMeta, Reading, ReadingMeta } from "./types";
@@ -82,6 +82,15 @@
       error = String(e);
     }
   }
+  async function doExportCsv(id: string) {
+    error = null;
+    try {
+      const dest = await save({ defaultPath: `${id}.csv`, filters: [{ name: "CSV", extensions: ["csv"] }] });
+      if (dest) { await exportReadingCsv(id, dest); }
+    } catch (e) {
+      error = String(e);
+    }
+  }
   async function doRenameCal(id: string, current: string) {
     error = null;
     const name = prompt("Rename calibration", current);
@@ -146,7 +155,8 @@
           </label>
           <span class="actions">
             <button onclick={() => doRename(r.id, r.name)}>rename</button>
-            <button onclick={() => doExport(r.id)}>export</button>
+            <button onclick={() => doExport(r.id)}>.s1p</button>
+            <button onclick={() => doExportCsv(r.id)}>.csv</button>
             <button onclick={() => doDelete(r.id)}>delete</button>
           </span>
         </li>

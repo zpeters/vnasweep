@@ -16,7 +16,8 @@ export const renameCal = (id: string, name: string) => invoke<CalMeta>("rename_c
 export const deleteCal = (id: string) => invoke<void>("delete_cal", { id });
 export const calUsage = (id: string) => invoke<number>("cal_usage", { id });
 
-export const sweep = (cal_id: string) => invoke<Reading>("sweep", { cal_id });
+export const sweep = (cal_id: string, threshold?: number) =>
+  invoke<Reading>("sweep", { cal_id, threshold });
 export const saveReading = (reading: Reading, name: string, notes: string) =>
   invoke<ReadingMeta>("save_reading", { reading, name, notes });
 export const listReadings = () => invoke<ReadingMeta[]>("list_readings");
@@ -25,6 +26,8 @@ export const renameReading = (id: string, name: string) => invoke<ReadingMeta>("
 export const deleteReading = (id: string) => invoke<void>("delete_reading", { id });
 export const exportReading = (id: string, dest_path: string) =>
   invoke<void>("export_reading", { id, dest_path });
+export const exportReadingCsv = (id: string, dest_path: string) =>
+  invoke<void>("export_reading_csv", { id, dest_path });
 
 export const listSerialPorts = () => invoke<PortInfo[]>("list_serial_ports");
 export const setSerialPort = (port: string | null) => invoke<void>("set_serial_port", { port });

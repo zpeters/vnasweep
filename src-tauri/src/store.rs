@@ -224,6 +224,30 @@ pub fn export_reading(id: &str, dest: &str) -> Result<(), String> {
         .map_err(|e| format!("copying {} to {dest}: {e}", src.display()))
 }
 
+/// Write the reading's derived trace as a spreadsheet-friendly CSV.
+/// Non-finite return loss (a perfect match) is left blank.
+pub fn export_reading_csv(id: &str, dest: &str) -> Result<(), String> {
+    let r = read_reading(id)?;
+    let mut out = String::from("freq_mhz,swr,r_ohm,x_ohm,return_loss_db,gamma_re,gamma_im\n");
+    for p in &r.trace {
+        let rl = if p.return_loss_db.is_finite() {
+            format!("{:.3}", p.return_loss_db)
+        } else {
+            String::new()
+        };
+        out.push_str(&format!(
+            "{:.6},{:.4},{:.3},{:.3},{rl},{:.6},{:.6}\n",
+            p.freq_hz as f64 / 1e6,
+            p.swr,
+            p.r,
+            p.x,
+            p.gamma_re,
+            p.gamma_im,
+        ));
+    }
+    fs::write(dest, out).map_err(|e| format!("writing {dest}: {e}"))
+}
+
 // ---- Touchstone -------------------------------------------------------
 
 fn render_touchstone(r: &Reading) -> String {
@@ -506,6 +530,25 @@ mod tests {
             std::fs::read_to_string(&src).unwrap()
         );
         assert!(export_reading("nope", dest.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn export_reading_csv_has_header_rows_and_blank_inf_rl() {
+        let _h = TempHome::new();
+        write_reading(&sample_reading("r1")).unwrap();
+        let dest = home().join("r1.csv");
+        export_reading_csv("r1", dest.to_str().unwrap()).unwrap();
+        let csv = std::fs::read_to_string(&dest).unwrap();
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(
+            lines[0],
+            "freq_mhz,swr,r_ohm,x_ohm,return_loss_db,gamma_re,gamma_im"
+        );
+        assert_eq!(lines.len(), 1 + 3); // header + 3 trace points
+        assert!(lines[1].starts_with("1.000000,3.0000,"));
+        // middle point has infinite RL (perfect match) -> blank field
+        assert!(lines[2].contains(",50.000,0.000,,")); // r,x,<blank rl>,
+        assert!(export_reading_csv("nope", dest.to_str().unwrap()).is_err());
     }
 
     #[test]

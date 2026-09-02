@@ -149,8 +149,14 @@ async fn cal_usage(id: String) -> Result<usize, String> {
 // ---- reading commands ----------------------------------------------
 
 #[tauri::command(rename_all = "snake_case")]
-async fn sweep(ports: State<'_, PortOverride>, cal_id: String) -> Result<Reading, String> {
+async fn sweep(
+    ports: State<'_, PortOverride>,
+    cal_id: String,
+    threshold: Option<f64>,
+) -> Result<Reading, String> {
     let port = ports.get();
+    // SWR ceiling for the bandwidth readout. Default 2.0; clamp above 1.
+    let threshold = threshold.unwrap_or(2.0).max(1.001);
     blocking(move || {
         let cal = store::read_cal(&cal_id)?;
         let raw = nanovna::sweep_raw(port, cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
@@ -178,7 +184,7 @@ async fn sweep(ports: State<'_, PortOverride>, cal_id: String) -> Result<Reading
         let corrected = cal::apply(&raw, &cal.error_terms)?;
         let trace = sweep::build_trace(&raw, &corrected);
         let min_swr = sweep::min_swr(&trace);
-        let bandwidth = sweep::swr_bandwidth(&trace, 2.0);
+        let bandwidth = sweep::swr_bandwidth(&trace, threshold);
         Ok(Reading {
             meta: ReadingMeta {
                 id: String::new(),
@@ -243,6 +249,11 @@ async fn export_reading(id: String, dest_path: String) -> Result<(), String> {
     blocking(move || store::export_reading(&id, &dest_path)).await
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn export_reading_csv(id: String, dest_path: String) -> Result<(), String> {
+    blocking(move || store::export_reading_csv(&id, &dest_path)).await
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -262,6 +273,7 @@ fn main() {
             rename_reading,
             delete_reading,
             export_reading,
+            export_reading_csv,
             list_serial_ports,
             set_serial_port,
             get_serial_port,
