@@ -162,7 +162,10 @@
     const opts: uPlot.Options = {
       width: 600,
       height: 360,
-      scales: { x: { distr }, y: { range: [1, 5] } },
+      scales: {
+        x: { distr },
+        y: { range: (_u, _min, max) => [1, Math.max(5, Math.min(100, Math.ceil(max * 1.05)))] },
+      },
       axes: [
         { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },
         { label: "SWR" },

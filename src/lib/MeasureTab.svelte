@@ -166,7 +166,12 @@
     const opts: uPlot.Options = {
       width: 600,
       height: 360,
-      scales: { x: { distr: (logAxis ? 3 : 1) as 1 | 3 }, y: { range: [1, 5] } },
+      scales: {
+        x: { distr: (logAxis ? 3 : 1) as 1 | 3 },
+        // Floor at SWR 1, show 1–5 by default, expand upward when the trace
+        // sits higher (a badly-matched load) so it never clips out of view.
+        y: { range: (_u, _min, max) => [1, Math.max(5, Math.min(100, Math.ceil(max * 1.05)))] },
+      },
       axes: [
         { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },
         { label: "SWR" },

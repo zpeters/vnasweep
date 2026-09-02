@@ -72,32 +72,42 @@ fn resolve_port(override_name: Option<String>) -> Result<String, String> {
 }
 
 /// Every serial port the OS can see, tagged with whether it looks like a
-/// NanoVNA. Feeds the port picker.
+/// NanoVNA. Feeds the port picker. Names are normalised to the macOS
+/// `/dev/cu.*` node; the `/dev/tty.*` twin of a port already seen is dropped
+/// so the list has no duplicate entries.
 pub fn list_ports() -> Result<Vec<PortInfo>, String> {
     let ports = serialport::available_ports().map_err(|e| format!("listing serial ports: {e}"))?;
-    Ok(ports
-        .into_iter()
-        .map(|p| {
-            let (description, is_nanovna) = match &p.port_type {
-                serialport::SerialPortType::UsbPort(usb) => {
-                    let label = usb
-                        .product
-                        .clone()
-                        .or_else(|| usb.manufacturer.clone())
-                        .unwrap_or_else(|| format!("USB {:04x}:{:04x}", usb.vid, usb.pid));
-                    (label, usb.vid == NANOVNA_VID && usb.pid == NANOVNA_PID)
-                }
-                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), false),
-                serialport::SerialPortType::PciPort => ("PCI".to_string(), false),
-                serialport::SerialPortType::Unknown => ("unknown".to_string(), false),
-            };
-            PortInfo {
-                name: p.port_name.replace("/dev/tty.", "/dev/cu."),
-                description,
-                is_nanovna,
+    Ok(dedupe_ports(ports))
+}
+
+fn dedupe_ports(ports: Vec<serialport::SerialPortInfo>) -> Vec<PortInfo> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for p in ports {
+        let name = p.port_name.replace("/dev/tty.", "/dev/cu.");
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let (description, is_nanovna) = match &p.port_type {
+            serialport::SerialPortType::UsbPort(usb) => {
+                let label = usb
+                    .product
+                    .clone()
+                    .or_else(|| usb.manufacturer.clone())
+                    .unwrap_or_else(|| format!("USB {:04x}:{:04x}", usb.vid, usb.pid));
+                (label, usb.vid == NANOVNA_VID && usb.pid == NANOVNA_PID)
             }
-        })
-        .collect())
+            serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), false),
+            serialport::SerialPortType::PciPort => ("PCI".to_string(), false),
+            serialport::SerialPortType::Unknown => ("unknown".to_string(), false),
+        };
+        out.push(PortInfo {
+            name,
+            description,
+            is_nanovna,
+        });
+    }
+    out
 }
 
 /// Open the port and drain whatever the shell had buffered.
@@ -316,6 +326,30 @@ mod sweep_tests {
         let data = "0.1 0.2\n0.3 0.4\n";
         let t = parse_sweep(freqs, data).unwrap();
         assert_eq!(t.points.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::dedupe_ports;
+    use serialport::{SerialPortInfo, SerialPortType};
+
+    fn port(name: &str) -> SerialPortInfo {
+        SerialPortInfo {
+            port_name: name.to_string(),
+            port_type: SerialPortType::Unknown,
+        }
+    }
+
+    #[test]
+    fn collapses_tty_and_cu_twins() {
+        let got = dedupe_ports(vec![
+            port("/dev/tty.debug-console"),
+            port("/dev/cu.debug-console"),
+            port("/dev/cu.usbmodem4001"),
+        ]);
+        let names: Vec<&str> = got.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["/dev/cu.debug-console", "/dev/cu.usbmodem4001"]);
     }
 }
 
