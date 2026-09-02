@@ -8,7 +8,7 @@
   } from "./api";
   import type { CalMeta, Reading, ReadingMeta } from "./types";
   import UplotChart from "./UplotChart.svelte";
-  import { swrSeries, bandShadePlugin } from "./plot";
+  import { swrSeries, bandShadePlugin, niceSwrMax } from "./plot";
 
   let readings = $state<ReadingMeta[]>([]);
   let cals = $state<CalMeta[]>([]);
@@ -164,7 +164,7 @@
       height: 360,
       scales: {
         x: { distr },
-        y: { range: (_u, _min, max) => [1, Math.max(5, Math.min(100, Math.ceil(max * 1.05)))] },
+        y: { range: (_u, _min, max) => [1, niceSwrMax(max)] },
       },
       axes: [
         { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },

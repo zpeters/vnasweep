@@ -6,7 +6,7 @@
   import UplotChart from "./UplotChart.svelte";
   import CalWizard from "./CalWizard.svelte";
   import DevicePanel from "./DevicePanel.svelte";
-  import { swrSeries, bandShadePlugin, minSwrMarkerPlugin } from "./plot";
+  import { swrSeries, bandShadePlugin, minSwrMarkerPlugin, niceSwrMax } from "./plot";
 
   let cals = $state<CalMeta[]>([]);
   let selectedId = $state<string>("");
@@ -168,9 +168,8 @@
       height: 360,
       scales: {
         x: { distr: (logAxis ? 3 : 1) as 1 | 3 },
-        // Floor at SWR 1, show 1–5 by default, expand upward when the trace
-        // sits higher (a badly-matched load) so it never clips out of view.
-        y: { range: (_u, _min, max) => [1, Math.max(5, Math.min(100, Math.ceil(max * 1.05)))] },
+        // Floor at SWR 1; top snaps to the next nice step above the trace.
+        y: { range: (_u, _min, max) => [1, niceSwrMax(max)] },
       },
       axes: [
         { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },

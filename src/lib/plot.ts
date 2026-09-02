@@ -4,6 +4,16 @@ import { HAM_BANDS } from "./bands";
 
 export interface LabeledTrace { label: string; trace: TracePoint[]; }
 
+/** SWR y-axis ceiling: the next "nice" step at or above the data max, so the
+ *  trace always fits and the axis stays put across live updates. Floor is
+ *  always 1 (SWR can't go lower). */
+export function niceSwrMax(dataMax: number): number {
+  for (const step of [1.5, 2, 3, 5, 10, 20, 50, 100]) {
+    if (dataMax <= step) return step;
+  }
+  return Math.ceil(dataMax / 100) * 100;
+}
+
 /** Merge traces onto the union of their frequencies; a series carries `null`
  *  where it has no sample (uPlot draws a gap). No interpolation. */
 export function swrSeries(traces: LabeledTrace[]): {
