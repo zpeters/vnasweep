@@ -1,8 +1,11 @@
 <script lang="ts">
   import { sweepRaw, saveCalibration } from "./api";
   import type { CalMeta, RawTrace } from "./types";
+  import CalHealthPanel from "./CalHealthPanel.svelte";
 
   let { ondone, oncancel }: { ondone: (m: CalMeta) => void; oncancel: () => void } = $props();
+
+  let solved = $state<CalMeta | null>(null);
 
   let name = $state("");
   let notes = $state("");
@@ -36,11 +39,11 @@
         stepIdx += 1;
       } else {
         stepIdx = 3;
-        const meta = await saveCalibration(
+        solved = await saveCalibration(
           name, notes, startHz(), stopHz(), points,
           captured.open!, captured.short!, captured.load!,
         );
-        ondone(meta);
+        stepIdx = 4; // review health before handing back
       }
     } catch (e) {
       error = String(e);
@@ -72,6 +75,14 @@
       <button onclick={captureCurrent} disabled={busy}>{busy ? "Sweeping…" : "Capture"}</button>
       <button onclick={oncancel} disabled={busy}>Cancel</button>
     </div>
+  {:else if stepIdx === 4 && solved}
+    <h3>Calibration "{solved.name}" saved</h3>
+    <CalHealthPanel calId={solved.id} />
+    <p class="muted">Tip: leave the 50 Ω load connected and hit <b>Diagnose</b> — corrected SWR should read ~1.0 across the band.</p>
+    <div class="row">
+      <button onclick={() => ondone(solved!)}>Use it</button>
+      <button onclick={() => { stepIdx = 0; captured = {}; solved = null; }}>Redo captures</button>
+    </div>
   {:else}
     <p>Solving…</p>
   {/if}
@@ -84,4 +95,5 @@
   .row { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; }
   input[type="number"] { width: 7rem; }
   .error { color: #b00020; }
+  .muted { color: #888; font-size: 0.85rem; }
 </style>

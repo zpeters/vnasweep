@@ -148,6 +148,30 @@ async fn cal_usage(id: String) -> Result<usize, String> {
 
 // ---- reading commands ----------------------------------------------
 
+/// The cal's per-point error terms only apply if the device swept the exact
+/// same frequency grid. Nothing has verified on hardware that it does, so
+/// check explicitly before correcting.
+fn check_grid(raw: &RawTrace, cal: &Calibration) -> Result<(), String> {
+    let grid = &cal.standards.open.points;
+    if raw.points.len() != grid.len() {
+        return Err(format!(
+            "device returned {} points but calibration '{}' has {}",
+            raw.points.len(),
+            cal.meta.id,
+            grid.len()
+        ));
+    }
+    for (i, (r, g)) in raw.points.iter().zip(grid).enumerate() {
+        if r.freq_hz != g.freq_hz {
+            return Err(format!(
+                "point {i}: device swept {} Hz but calibration '{}' is at {} Hz — re-run the calibration for this span",
+                r.freq_hz, cal.meta.id, g.freq_hz
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn sweep(
     ports: State<'_, PortOverride>,
@@ -160,27 +184,7 @@ async fn sweep(
     blocking(move || {
         let cal = store::read_cal(&cal_id)?;
         let raw = nanovna::sweep_raw(port, cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
-        // The cal's error terms are per-point, so the device's returned grid must
-        // match the cal's grid exactly. §5.3 calls this "structural" because we ask
-        // for the cal's span, but nothing has verified on hardware that the device
-        // doesn't quantise or return a grid it wasn't asked for. Check explicitly.
-        let grid = &cal.standards.open.points;
-        if raw.points.len() != grid.len() {
-            return Err(format!(
-                "device returned {} points but calibration '{}' has {}",
-                raw.points.len(),
-                cal.meta.id,
-                grid.len()
-            ));
-        }
-        for (i, (r, g)) in raw.points.iter().zip(grid).enumerate() {
-            if r.freq_hz != g.freq_hz {
-                return Err(format!(
-                    "point {i}: device swept {} Hz but calibration '{}' is at {} Hz — re-run the calibration for this span",
-                    r.freq_hz, cal.meta.id, g.freq_hz
-                ));
-            }
-        }
+        check_grid(&raw, &cal)?;
         let corrected = cal::apply(&raw, &cal.error_terms)?;
         let trace = sweep::build_trace(&raw, &corrected);
         let min_swr = sweep::min_swr(&trace);
@@ -254,6 +258,57 @@ async fn export_reading_csv(id: String, dest_path: String) -> Result<(), String>
     blocking(move || store::export_reading_csv(&id, &dest_path)).await
 }
 
+// ---- diagnostics -------------------------------------------------
+
+#[tauri::command]
+async fn cal_health(id: String) -> Result<model::CalHealth, String> {
+    blocking(move || {
+        let c = store::read_cal(&id)?;
+        Ok(cal::health(&c.standards, &c.error_terms))
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn sweep_diag(
+    ports: State<'_, PortOverride>,
+    cal_id: String,
+) -> Result<model::DiagReading, String> {
+    let port = ports.get();
+    blocking(move || {
+        let cal = store::read_cal(&cal_id)?;
+        let (raw, device) =
+            nanovna::sweep_diag(port, cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
+        check_grid(&raw, &cal)?;
+
+        let corrected = cal::apply(&raw, &cal.error_terms)?;
+        let ours = sweep::build_trace(&raw, &corrected);
+
+        // raw and device values are already reflection coefficients — build a
+        // trace straight from them, no correction.
+        let as_gamma = |t: &RawTrace| -> Vec<complex::Complex> {
+            t.points
+                .iter()
+                .map(|p| complex::Complex::new(p.re, p.im))
+                .collect()
+        };
+        let raw_trace = sweep::build_trace(&raw, &as_gamma(&raw));
+        let device_trace = sweep::build_trace(&device, &as_gamma(&device));
+
+        Ok(model::DiagReading {
+            cal_id: cal.meta.id.clone(),
+            cal_name: cal.meta.name.clone(),
+            start_hz: cal.meta.start_hz,
+            stop_hz: cal.meta.stop_hz,
+            points: cal.meta.points,
+            ours,
+            raw: raw_trace,
+            device: device_trace,
+        })
+    })
+    .await
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -274,6 +329,8 @@ fn main() {
             delete_reading,
             export_reading,
             export_reading_csv,
+            cal_health,
+            sweep_diag,
             list_serial_ports,
             set_serial_port,
             get_serial_port,

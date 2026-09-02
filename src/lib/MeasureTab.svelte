@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type uPlot from "uplot";
-  import { listCals, sweep, saveReading } from "./api";
-  import type { CalMeta, Reading, TracePoint } from "./types";
+  import { listCals, sweep, saveReading, sweepDiag } from "./api";
+  import type { CalMeta, DiagReading, Reading, TracePoint } from "./types";
   import UplotChart from "./UplotChart.svelte";
   import CalWizard from "./CalWizard.svelte";
   import DevicePanel from "./DevicePanel.svelte";
+  import CalHealthPanel from "./CalHealthPanel.svelte";
   import { swrSeries, bandShadePlugin, minSwrMarkerPlugin, niceSwrMax } from "./plot";
 
   let cals = $state<CalMeta[]>([]);
@@ -28,6 +29,10 @@
 
   // Transient on-plot comparison — not saved to disk.
   let reference = $state<{ label: string; trace: TracePoint[] } | null>(null);
+
+  // Diagnostic sweep: our correction vs the device's vs uncorrected raw.
+  let diag = $state<DiagReading | null>(null);
+  let diagBusy = $state(false);
 
   let saveName = $state("");
   let saveNotes = $state("");
@@ -129,6 +134,20 @@
   function onCalChange() {
     stopLive();
     reference = null;
+    diag = null;
+  }
+
+  async function doDiagnose() {
+    if (!selectedId || diagBusy) return;
+    diagBusy = true; error = null;
+    try {
+      diag = await sweepDiag(selectedId);
+    } catch (e) {
+      diag = null;
+      error = String(e);
+    } finally {
+      diagBusy = false;
+    }
   }
 
   function keepAsReference() {
@@ -189,6 +208,57 @@
     return { data, opts };
   });
 
+  const diagPlot = $derived.by(() => {
+    if (!diag) return null;
+    const labeled = [
+      { label: "ours (OSL)", trace: diag.ours },
+      { label: "device (cal on)", trace: diag.device },
+      { label: "raw (uncorrected)", trace: diag.raw },
+    ];
+    const { x, series } = swrSeries(labeled);
+    const data: uPlot.AlignedData = [x, ...series.map((s) => s.y)];
+    const logAxis = diag.stop_hz / Math.max(1, diag.start_hz) > 3;
+    const strokes = ["#1769ff", "#17772f", "#94a3b8"];
+    const opts: uPlot.Options = {
+      width: 600,
+      height: 320,
+      scales: {
+        x: { distr: (logAxis ? 3 : 1) as 1 | 3 },
+        y: { range: (_u, _min, max) => [1, niceSwrMax(max)] },
+      },
+      axes: [
+        { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },
+        { label: "SWR" },
+      ],
+      series: [
+        {},
+        ...series.map((s, i) => ({
+          label: s.label,
+          stroke: strokes[i],
+          width: 2,
+          dash: i === 2 ? [6, 4] : undefined,
+        })),
+      ],
+      plugins: [bandShadePlugin()],
+    };
+    return { data, opts };
+  });
+
+  function traceMinSwr(t: TracePoint[]): { swr: number; f: number } {
+    let best = { swr: Infinity, f: 0 };
+    for (const p of t) if (p.swr < best.swr) best = { swr: p.swr, f: p.freq_hz };
+    return best;
+  }
+  const diagSummary = $derived(
+    diag
+      ? {
+          ours: traceMinSwr(diag.ours),
+          device: traceMinSwr(diag.device),
+          raw: traceMinSwr(diag.raw),
+        }
+      : null,
+  );
+
   const deviceMissing = $derived(
     error != null && /no .*nanovna|device|serial port|not found/i.test(error),
   );
@@ -218,6 +288,7 @@
       {(selectedCal.start_hz / 1e6).toFixed(3)}–{(selectedCal.stop_hz / 1e6).toFixed(3)} MHz ·
       {selectedCal.points} pts · {ageDays(selectedCal.created)} d old
     </p>
+    <CalHealthPanel calId={selectedId} />
   {/if}
 
   {#if showWizard}
@@ -253,6 +324,14 @@
     {#if live}
       <span class="badge"><span class="dot"></span> live · updated {agoText}</span>
     {/if}
+  </div>
+
+  <div class="row">
+    <button onclick={doDiagnose} disabled={diagBusy || live || !selectedId}>
+      {diagBusy ? "Diagnosing…" : "Diagnose"}
+    </button>
+    <span class="muted">ours vs device vs raw — leave a 50 Ω load on the port; all three should read ~1.0</span>
+    {#if diag}<button onclick={() => (diag = null)}>clear</button>{/if}
   </div>
 
   <p class="muted keys">space = sweep · L = live</p>
@@ -293,6 +372,21 @@
       {#if saved}<p class="muted">saved "{saved}"</p>{/if}
     {/if}
   {/if}
+
+  {#if diagPlot && diagSummary}
+    <h3 class="diag-h">Diagnostic — ours vs device vs raw</h3>
+    <UplotChart data={diagPlot.data} opts={diagPlot.opts} />
+    <p class="muted">
+      min SWR — <b style="color:#1769ff">ours {diagSummary.ours.swr.toFixed(2)}</b> ·
+      <b style="color:#17772f">device {diagSummary.device.swr.toFixed(2)}</b> ·
+      <span style="color:#94a3b8">raw {diagSummary.raw.swr.toFixed(2)}</span>
+    </p>
+    <p class="muted">
+      If <b>device</b> matches the NanoVNA's own screen but <b>ours</b> doesn't, the OSL
+      correction or the stored standards are wrong. If <b>raw</b> and <b>device</b> both
+      look off, it's the antenna or cable.
+    </p>
+  {/if}
 </section>
 
 <style>
@@ -300,6 +394,7 @@
   .row { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin: 0.5rem 0; }
   .muted { color: #888; font-size: 0.9rem; }
   .keys { margin: 0.1rem 0 0; font-size: 0.8rem; }
+  .diag-h { font-size: 0.95rem; margin: 1.25rem 0 0.25rem; }
   .error { color: #b00020; white-space: pre-wrap; }
   button.live { background: #b00020; color: #fff; border-color: #b00020; }
   .badge { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: #666; }

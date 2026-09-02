@@ -20,6 +20,15 @@ impl Complex {
         self.re.hypot(self.im)
     }
 
+    /// Argument (phase angle) in radians, in (-π, π].
+    pub fn arg(self) -> f64 {
+        self.im.atan2(self.re)
+    }
+
+    pub fn conj(self) -> Complex {
+        Complex::new(self.re, -self.im)
+    }
+
     pub fn is_finite(self) -> bool {
         self.re.is_finite() && self.im.is_finite()
     }

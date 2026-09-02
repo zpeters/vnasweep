@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CalMeta, Calibration, PortInfo, RawTrace, Reading, ReadingMeta, SweepConfig,
+  CalHealth, CalMeta, Calibration, DiagReading, PortInfo, RawTrace, Reading,
+  ReadingMeta, SweepConfig,
 } from "./types";
 
 export const listCals = () => invoke<CalMeta[]>("list_cals");
@@ -18,6 +19,8 @@ export const calUsage = (id: string) => invoke<number>("cal_usage", { id });
 
 export const sweep = (cal_id: string, threshold?: number) =>
   invoke<Reading>("sweep", { cal_id, threshold });
+export const calHealth = (id: string) => invoke<CalHealth>("cal_health", { id });
+export const sweepDiag = (cal_id: string) => invoke<DiagReading>("sweep_diag", { cal_id });
 export const saveReading = (reading: Reading, name: string, notes: string) =>
   invoke<ReadingMeta>("save_reading", { reading, name, notes });
 export const listReadings = () => invoke<ReadingMeta[]>("list_readings");

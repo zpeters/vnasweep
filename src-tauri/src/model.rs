@@ -112,6 +112,41 @@ pub struct SweepConfig {
     pub points: u32,
 }
 
+/// mean / min / max of a scalar across a standard's sweep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MagStats {
+    pub mean: f64,
+    pub min: f64,
+    pub max: f64,
+}
+
+/// Sanity numbers for a stored calibration. `warnings` is empty for a good one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalHealth {
+    pub open_mag: MagStats,        // expect ~1.0
+    pub short_mag: MagStats,       // expect ~1.0
+    pub load_mag: MagStats,        // expect < ~0.1
+    pub open_short_phase_deg: f64, // angle between Γ_open and Γ_short, expect ~180
+    pub directivity_mag: f64,      // mean |e00|, expect small
+    pub source_match_mag: f64,     // mean |e11|, expect small
+    pub tracking_mag: f64,         // mean |e10·e01|, expect ~0.3–1.0
+    pub warnings: Vec<String>,
+}
+
+/// One diagnostic sweep: our OSL-corrected trace, the uncorrected raw, and
+/// the device's own `cal on` correction — all on the same grid.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagReading {
+    pub cal_id: String,
+    pub cal_name: String,
+    pub start_hz: u64,
+    pub stop_hz: u64,
+    pub points: u32,
+    pub ours: Vec<TracePoint>,
+    pub raw: Vec<TracePoint>,
+    pub device: Vec<TracePoint>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

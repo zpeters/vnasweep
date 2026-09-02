@@ -48,3 +48,26 @@ export interface Reading {
 
 export interface PortInfo { name: string; description: string; is_nanovna: boolean; }
 export interface SweepConfig { start_hz: number; stop_hz: number; points: number; }
+
+export interface MagStats { mean: number; min: number; max: number; }
+export interface CalHealth {
+  open_mag: MagStats;
+  short_mag: MagStats;
+  load_mag: MagStats;
+  open_short_phase_deg: number;
+  directivity_mag: number;
+  source_match_mag: number;
+  tracking_mag: number;
+  warnings: string[];
+}
+
+export interface DiagReading {
+  cal_id: string;
+  cal_name: string;
+  start_hz: number;
+  stop_hz: number;
+  points: number;
+  ours: TracePoint[];
+  raw: TracePoint[];
+  device: TracePoint[];
+}

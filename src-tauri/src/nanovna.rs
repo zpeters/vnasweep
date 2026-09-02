@@ -14,6 +14,11 @@ const NANOVNA_PID: u16 = 0x5740;
 /// The NanoVNA shell prints this when it is ready for the next command.
 const PROMPT: &[u8] = b"ch> ";
 
+/// How long to wait after programming a span before reading, so at least one
+/// full sweep completes. The H sweeps ~2/s. If this proves too short the
+/// symptom is garbage on some points; poll a status command instead.
+const SETTLE: Duration = Duration::from_millis(1200);
+
 /// Send one shell command, return its output with the echoed command line and
 /// the trailing prompt stripped.
 fn run_command(port: &mut dyn serialport::SerialPort, cmd: &str) -> Result<String, String> {
@@ -261,10 +266,8 @@ pub fn sweep_raw(
         &format!("sweep {start_hz} {stop_hz} {points}"),
     )?;
 
-    // Let at least one full sweep complete before reading. The H sweeps ~2/s;
-    // budget generously. (If this proves flaky, poll a status command instead —
-    // see the device-verification note.)
-    std::thread::sleep(Duration::from_millis(1200));
+    // Let at least one full sweep complete before reading.
+    std::thread::sleep(SETTLE);
 
     let frequencies = run_command(port.as_mut(), "frequencies")?;
     let data = run_command(port.as_mut(), "data 0")?;
@@ -273,6 +276,42 @@ pub fn sweep_raw(
     let _ = run_command(port.as_mut(), "cal on");
 
     parse_sweep(&frequencies, &data)
+}
+
+/// A diagnostic pass at one span: the uncorrected raw S11, and the device's
+/// own `cal on` correction, on the same grid. Leaves the device with `cal on`.
+pub fn sweep_diag(
+    port: Option<String>,
+    start_hz: u64,
+    stop_hz: u64,
+    points: u32,
+) -> Result<(RawTrace, RawTrace), String> {
+    if points == 0 {
+        return Err("sweep needs at least 1 point".into());
+    }
+    if stop_hz <= start_hz {
+        return Err("sweep stop frequency must be above the start".into());
+    }
+
+    let port_name = resolve_port(port)?;
+    let mut port = open_and_wake(&port_name)?;
+
+    run_command(port.as_mut(), "cal off")?;
+    run_command(
+        port.as_mut(),
+        &format!("sweep {start_hz} {stop_hz} {points}"),
+    )?;
+    std::thread::sleep(SETTLE);
+
+    let frequencies = run_command(port.as_mut(), "frequencies")?;
+    let raw = parse_sweep(&frequencies, &run_command(port.as_mut(), "data 0")?)?;
+
+    // Device's own correction, same grid.
+    run_command(port.as_mut(), "cal on")?;
+    std::thread::sleep(SETTLE);
+    let device = parse_sweep(&frequencies, &run_command(port.as_mut(), "data 0")?)?;
+
+    Ok((raw, device))
 }
 
 #[cfg(test)]
