@@ -71,22 +71,25 @@ pub fn health(std: &Standards, terms: &ErrorTerms) -> CalHealth {
     let source_match_mag = mean_abs(&terms.e11);
     let tracking_mag = mean_abs(&terms.e10e01);
 
+    // The captures are raw (cal off), so magnitudes near 1 are not expected.
+    // Only flag values that indicate a wrong or unconnected standard, or
+    // solved terms that came out unstable.
     let mut warnings = Vec::new();
-    if load_mag.mean > 0.2 {
+    if load_mag.mean > 0.3 {
         warnings.push(format!(
-            "Load |Γ| averages {:.2} — a real 50 Ω load reads near 0. The Load standard may not have been connected.",
+            "Load |Γ| averages {:.2} — even raw, a 50 Ω load reads low. The Load standard may not have been connected.",
             load_mag.mean
         ));
     }
-    if open_mag.mean < 0.7 {
+    if open_mag.mean < 0.2 {
         warnings.push(format!(
-            "Open |Γ| averages {:.2} — expected near 1. The port may have been shorted or loaded during the Open step.",
+            "Open |Γ| averages {:.2} — that looks like a matched load, not an open. Wrong standard?",
             open_mag.mean
         ));
     }
-    if short_mag.mean < 0.7 {
+    if short_mag.mean < 0.2 {
         warnings.push(format!(
-            "Short |Γ| averages {:.2} — expected near 1. The port may have been open or loaded during the Short step.",
+            "Short |Γ| averages {:.2} — that looks like a matched load, not a short. Wrong standard?",
             short_mag.mean
         ));
     }
@@ -95,12 +98,12 @@ pub fn health(std: &Standards, terms: &ErrorTerms) -> CalHealth {
             "Open and Short are only {open_short_phase_deg:.0}° apart — expected ~180°. Standards may be swapped or a connection was loose."
         ));
     }
-    if tracking_mag < 0.1 {
+    if !(0.1..=3.0).contains(&tracking_mag) {
         warnings.push(format!(
-            "Reflection tracking |e10·e01| is {tracking_mag:.3} — near zero means the calibration is degenerate."
+            "Reflection tracking |e10·e01| is {tracking_mag:.2} — outside the usable 0.1–3 range. The Open/Short captures are inconsistent."
         ));
     }
-    if directivity_mag > 0.3 {
+    if directivity_mag > 0.4 {
         warnings.push(format!(
             "Directivity |e00| is {directivity_mag:.2} — large values usually mean a bad Load capture."
         ));
@@ -285,6 +288,24 @@ mod tests {
         assert!((h.open_mag.mean - 0.9812).abs() < 1e-3);
         assert!(h.load_mag.mean < 0.05);
         assert!(h.open_short_phase_deg > 150.0);
+    }
+
+    #[test]
+    fn health_accepts_a_lossy_raw_open() {
+        // Real NanoVNA raw captures: open/short well below |Γ|=1, load near 0,
+        // ~180° apart. This must NOT warn.
+        let std = Standards {
+            open: multi_point(0.62, 0.0, 6),
+            short: multi_point(-0.83, 0.0, 6),
+            load: multi_point(0.04, 0.0, 6),
+        };
+        let terms = solve_osl(&std).unwrap();
+        let h = health(&std, &terms);
+        assert!(
+            h.warnings.is_empty(),
+            "lossy raw open should be fine: {:?}",
+            h.warnings
+        );
     }
 
     #[test]

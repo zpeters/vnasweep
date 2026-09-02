@@ -121,15 +121,19 @@ pub struct MagStats {
 }
 
 /// Sanity numbers for a stored calibration. `warnings` is empty for a good one.
+/// The standard captures are *raw* (device `cal off`), so magnitudes are not
+/// ideal — a raw open on a NanoVNA bridge often reads 0.6–0.9. What matters is
+/// that the three are distinct, open↔short sit ~180° apart, and the solved
+/// terms are stable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalHealth {
-    pub open_mag: MagStats,        // expect ~1.0
-    pub short_mag: MagStats,       // expect ~1.0
-    pub load_mag: MagStats,        // expect < ~0.1
+    pub open_mag: MagStats,        // raw; expect distinctly non-zero
+    pub short_mag: MagStats,       // raw; expect distinctly non-zero
+    pub load_mag: MagStats,        // expect < ~0.2
     pub open_short_phase_deg: f64, // angle between Γ_open and Γ_short, expect ~180
     pub directivity_mag: f64,      // mean |e00|, expect small
     pub source_match_mag: f64,     // mean |e11|, expect small
-    pub tracking_mag: f64,         // mean |e10·e01|, expect ~0.3–1.0
+    pub tracking_mag: f64,         // mean |e10·e01|, expect ~0.3–1.5
     pub warnings: Vec<String>,
 }
 
