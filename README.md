@@ -30,11 +30,14 @@ against a 50 Ω load and a short. Remaining fine-tuning is in `TODO.md`.
 Nix flake + direnv provide `just` and Node/npm; Rust comes from `rustup`.
 
 ```
-npm install       # once
 just tauri-dev    # opens the app with hot reload
 just check        # cargo fmt --check + clippy -D warnings + cargo test + npm run check + npm test
 just install      # build the release bundle, copy to /Applications (macOS)
 ```
+
+Every JS-touching recipe depends on `deps`, which runs `npm ci` when
+`node_modules` is missing or older than `package-lock.json`. No manual
+`npm install` step.
 
 ## Layout
 
