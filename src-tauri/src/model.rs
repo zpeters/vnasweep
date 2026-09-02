@@ -94,6 +94,24 @@ pub struct Reading {
     pub bandwidth: Option<Band>,
 }
 
+/// One entry in the serial-port picker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortInfo {
+    pub name: String,
+    pub description: String,
+    /// True when the USB VID:PID matches the NanoVNA-H.
+    pub is_nanovna: bool,
+}
+
+/// The sweep span the device is currently programmed for, read back from
+/// its `frequencies` output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SweepConfig {
+    pub start_hz: u64,
+    pub stop_hz: u64,
+    pub points: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

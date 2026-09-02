@@ -5,6 +5,7 @@
   import type { CalMeta, Reading, TracePoint } from "./types";
   import UplotChart from "./UplotChart.svelte";
   import CalWizard from "./CalWizard.svelte";
+  import DevicePanel from "./DevicePanel.svelte";
   import { swrSeries, bandShadePlugin, minSwrMarkerPlugin } from "./plot";
 
   let cals = $state<CalMeta[]>([]);
@@ -180,6 +181,8 @@
 </script>
 
 <section>
+  <DevicePanel />
+
   <div class="row">
     <label>
       Calibration

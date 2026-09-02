@@ -5,7 +5,7 @@
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use crate::model::{RawPoint, RawTrace};
+use crate::model::{PortInfo, RawPoint, RawTrace, SweepConfig};
 
 /// STMicroelectronics Virtual COM Port — what the NanoVNA-H enumerates as.
 const NANOVNA_VID: u16 = 0x0483;
@@ -60,6 +60,96 @@ fn autodetect() -> Result<String, String> {
     Err(format!(
         "no NanoVNA (USB {NANOVNA_VID:04x}:{NANOVNA_PID:04x}) found. Ports: {seen:?}"
     ))
+}
+
+/// Resolve the port to talk to: an explicit user override if set, else
+/// autodetect by USB id. On macOS, force the `/dev/cu.*` node.
+fn resolve_port(override_name: Option<String>) -> Result<String, String> {
+    match override_name {
+        Some(name) if !name.trim().is_empty() => Ok(name.replace("/dev/tty.", "/dev/cu.")),
+        _ => autodetect(),
+    }
+}
+
+/// Every serial port the OS can see, tagged with whether it looks like a
+/// NanoVNA. Feeds the port picker.
+pub fn list_ports() -> Result<Vec<PortInfo>, String> {
+    let ports = serialport::available_ports().map_err(|e| format!("listing serial ports: {e}"))?;
+    Ok(ports
+        .into_iter()
+        .map(|p| {
+            let (description, is_nanovna) = match &p.port_type {
+                serialport::SerialPortType::UsbPort(usb) => {
+                    let label = usb
+                        .product
+                        .clone()
+                        .or_else(|| usb.manufacturer.clone())
+                        .unwrap_or_else(|| format!("USB {:04x}:{:04x}", usb.vid, usb.pid));
+                    (label, usb.vid == NANOVNA_VID && usb.pid == NANOVNA_PID)
+                }
+                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), false),
+                serialport::SerialPortType::PciPort => ("PCI".to_string(), false),
+                serialport::SerialPortType::Unknown => ("unknown".to_string(), false),
+            };
+            PortInfo {
+                name: p.port_name.replace("/dev/tty.", "/dev/cu."),
+                description,
+                is_nanovna,
+            }
+        })
+        .collect())
+}
+
+/// Open the port and drain whatever the shell had buffered.
+fn open_and_wake(port_name: &str) -> Result<Box<dyn serialport::SerialPort>, String> {
+    let mut port = serialport::new(port_name, 115_200)
+        .timeout(Duration::from_millis(300))
+        .open()
+        .map_err(|e| format!("opening {port_name}: {e}"))?;
+    port.write_all(b"\r").map_err(io_err)?;
+    port.flush().map_err(io_err)?;
+    let _ = read_until_prompt(port.as_mut(), Duration::from_millis(500));
+    Ok(port)
+}
+
+/// `version` + `info`, as one text block. Read-only — safe to call any time.
+pub fn board_info(port: Option<String>) -> Result<String, String> {
+    let name = resolve_port(port)?;
+    let mut port = open_and_wake(&name)?;
+    let version = run_command(port.as_mut(), "version")?;
+    let info = run_command(port.as_mut(), "info")?;
+    Ok(format!("{version}\n{info}").trim().to_string())
+}
+
+/// Read back the span the device is currently swept over.
+pub fn sweep_config(port: Option<String>) -> Result<SweepConfig, String> {
+    let name = resolve_port(port)?;
+    let mut port = open_and_wake(&name)?;
+    let freqs = run_command(port.as_mut(), "frequencies")?;
+    parse_frequencies(&freqs)
+}
+
+/// Parse the `frequencies` output (one integer Hz per line) into a span.
+fn parse_frequencies(text: &str) -> Result<SweepConfig, String> {
+    let freqs: Vec<u64> = text
+        .lines()
+        .filter_map(|l| {
+            let t = l.trim();
+            if t.is_empty() {
+                None
+            } else {
+                t.parse::<u64>().ok()
+            }
+        })
+        .collect();
+    match (freqs.first(), freqs.last(), u32::try_from(freqs.len())) {
+        (Some(&start_hz), Some(&stop_hz), Ok(points)) if points > 0 => Ok(SweepConfig {
+            start_hz,
+            stop_hz,
+            points,
+        }),
+        _ => Err("device returned no frequency points".into()),
+    }
 }
 
 /// Accumulate bytes until the buffer ends with the `ch> ` prompt, or until
@@ -135,8 +225,13 @@ fn parse_sweep(frequencies: &str, data: &str) -> Result<RawTrace, String> {
 }
 
 /// One raw (uncorrected) S11 sweep at the given span. Blocking.
-#[allow(dead_code)]
-pub fn sweep_raw(start_hz: u64, stop_hz: u64, points: u32) -> Result<RawTrace, String> {
+/// `port` overrides autodetect when set (from the port picker).
+pub fn sweep_raw(
+    port: Option<String>,
+    start_hz: u64,
+    stop_hz: u64,
+    points: u32,
+) -> Result<RawTrace, String> {
     if points == 0 {
         return Err("sweep needs at least 1 point".into());
     }
@@ -144,17 +239,8 @@ pub fn sweep_raw(start_hz: u64, stop_hz: u64, points: u32) -> Result<RawTrace, S
         return Err("sweep stop frequency must be above the start".into());
     }
 
-    let port_name = autodetect()?;
-    let mut port = serialport::new(&port_name, 115_200)
-        .timeout(Duration::from_millis(300))
-        .open()
-        .map_err(|e| format!("opening {port_name}: {e}"))?;
-
-    // Wake the shell, drain anything pending.
-    port.write_all(b"\r")
-        .map_err(|e| format!("serial I/O: {e}"))?;
-    port.flush().map_err(|e| format!("serial I/O: {e}"))?;
-    let _ = read_until_prompt(port.as_mut(), Duration::from_millis(500));
+    let port_name = resolve_port(port)?;
+    let mut port = open_and_wake(&port_name)?;
 
     // Disable on-device correction so we read the true raw reflection.
     run_command(port.as_mut(), "cal off")?;
@@ -230,5 +316,28 @@ mod sweep_tests {
         let data = "0.1 0.2\n0.3 0.4\n";
         let t = parse_sweep(freqs, data).unwrap();
         assert_eq!(t.points.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod frequencies_tests {
+    use super::parse_frequencies;
+
+    #[test]
+    fn reads_span_and_count() {
+        let c = parse_frequencies("1000000\n1500000\n2000000\n").unwrap();
+        assert_eq!((c.start_hz, c.stop_hz, c.points), (1_000_000, 2_000_000, 3));
+    }
+
+    #[test]
+    fn ignores_blank_lines() {
+        let c = parse_frequencies("\n7000000\n\n7300000\n").unwrap();
+        assert_eq!((c.start_hz, c.stop_hz, c.points), (7_000_000, 7_300_000, 2));
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(parse_frequencies("").is_err());
+        assert!(parse_frequencies("\n\n").is_err());
     }
 }

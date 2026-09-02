@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CalMeta, Calibration, RawTrace, Reading, ReadingMeta,
+  CalMeta, Calibration, PortInfo, RawTrace, Reading, ReadingMeta, SweepConfig,
 } from "./types";
 
 export const listCals = () => invoke<CalMeta[]>("list_cals");
@@ -25,3 +25,9 @@ export const renameReading = (id: string, name: string) => invoke<ReadingMeta>("
 export const deleteReading = (id: string) => invoke<void>("delete_reading", { id });
 export const exportReading = (id: string, dest_path: string) =>
   invoke<void>("export_reading", { id, dest_path });
+
+export const listSerialPorts = () => invoke<PortInfo[]>("list_serial_ports");
+export const setSerialPort = (port: string | null) => invoke<void>("set_serial_port", { port });
+export const getSerialPort = () => invoke<string | null>("get_serial_port");
+export const boardInfo = () => invoke<string>("board_info");
+export const deviceSweepConfig = () => invoke<SweepConfig>("device_sweep_config");

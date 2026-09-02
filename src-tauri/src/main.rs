@@ -8,7 +8,23 @@ mod nanovna;
 mod store;
 mod sweep;
 
-use model::{CalMeta, Calibration, RawTrace, Reading, ReadingMeta, Standards};
+use std::sync::Mutex;
+
+use model::{
+    CalMeta, Calibration, PortInfo, RawTrace, Reading, ReadingMeta, Standards, SweepConfig,
+};
+use tauri::State;
+
+/// User-chosen serial port. `None` means "autodetect by USB id". Set by the
+/// port picker; read by every command that talks to the device.
+#[derive(Default)]
+struct PortOverride(Mutex<Option<String>>);
+
+impl PortOverride {
+    fn get(&self) -> Option<String> {
+        self.0.lock().unwrap().clone()
+    }
+}
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -38,8 +54,43 @@ async fn get_cal(id: String) -> Result<Calibration, String> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn sweep_raw(start_hz: u64, stop_hz: u64, points: u32) -> Result<RawTrace, String> {
-    blocking(move || nanovna::sweep_raw(start_hz, stop_hz, points)).await
+async fn sweep_raw(
+    ports: State<'_, PortOverride>,
+    start_hz: u64,
+    stop_hz: u64,
+    points: u32,
+) -> Result<RawTrace, String> {
+    let port = ports.get();
+    blocking(move || nanovna::sweep_raw(port, start_hz, stop_hz, points)).await
+}
+
+// ---- device commands ----------------------------------------------
+
+#[tauri::command]
+fn list_serial_ports() -> Result<Vec<PortInfo>, String> {
+    nanovna::list_ports()
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn set_serial_port(ports: State<'_, PortOverride>, port: Option<String>) {
+    *ports.0.lock().unwrap() = port.filter(|s| !s.trim().is_empty());
+}
+
+#[tauri::command]
+fn get_serial_port(ports: State<'_, PortOverride>) -> Option<String> {
+    ports.get()
+}
+
+#[tauri::command]
+async fn board_info(ports: State<'_, PortOverride>) -> Result<String, String> {
+    let port = ports.get();
+    blocking(move || nanovna::board_info(port)).await
+}
+
+#[tauri::command]
+async fn device_sweep_config(ports: State<'_, PortOverride>) -> Result<SweepConfig, String> {
+    let port = ports.get();
+    blocking(move || nanovna::sweep_config(port)).await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -98,10 +149,11 @@ async fn cal_usage(id: String) -> Result<usize, String> {
 // ---- reading commands ----------------------------------------------
 
 #[tauri::command(rename_all = "snake_case")]
-async fn sweep(cal_id: String) -> Result<Reading, String> {
+async fn sweep(ports: State<'_, PortOverride>, cal_id: String) -> Result<Reading, String> {
+    let port = ports.get();
     blocking(move || {
         let cal = store::read_cal(&cal_id)?;
-        let raw = nanovna::sweep_raw(cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
+        let raw = nanovna::sweep_raw(port, cal.meta.start_hz, cal.meta.stop_hz, cal.meta.points)?;
         // The cal's error terms are per-point, so the device's returned grid must
         // match the cal's grid exactly. §5.3 calls this "structural" because we ask
         // for the cal's span, but nothing has verified on hardware that the device
@@ -194,6 +246,7 @@ async fn export_reading(id: String, dest_path: String) -> Result<(), String> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(PortOverride::default())
         .invoke_handler(tauri::generate_handler![
             list_cals,
             get_cal,
@@ -209,6 +262,11 @@ fn main() {
             rename_reading,
             delete_reading,
             export_reading,
+            list_serial_ports,
+            set_serial_port,
+            get_serial_port,
+            board_info,
+            device_sweep_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vnasweep");

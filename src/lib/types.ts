@@ -45,3 +45,6 @@ export interface Reading {
   min_swr: SwrPoint;
   bandwidth: Band | null;
 }
+
+export interface PortInfo { name: string; description: string; is_nanovna: boolean; }
+export interface SweepConfig { start_hz: number; stop_hz: number; points: number; }
