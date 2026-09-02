@@ -116,6 +116,15 @@
     else startLive();
   }
 
+  function onKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+      return;
+    }
+    if (e.key === " ") { e.preventDefault(); doSweep(); }
+    else if (e.key === "l" || e.key === "L") { toggleLive(); }
+  }
+
   // Changing the calibration mid-run invalidates the point grid — stop.
   function onCalChange() {
     stopLive();
@@ -181,6 +190,8 @@
   );
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <section>
   <DevicePanel />
 
@@ -240,6 +251,8 @@
     {/if}
   </div>
 
+  <p class="muted keys">space = sweep · L = live</p>
+
   {#if error}
     <p class="error">{error}</p>
     {#if deviceMissing}
@@ -282,6 +295,7 @@
   section { padding: 1rem; }
   .row { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin: 0.5rem 0; }
   .muted { color: #888; font-size: 0.9rem; }
+  .keys { margin: 0.1rem 0 0; font-size: 0.8rem; }
   .error { color: #b00020; white-space: pre-wrap; }
   button.live { background: #b00020; color: #fff; border-color: #b00020; }
   .badge { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: #666; }

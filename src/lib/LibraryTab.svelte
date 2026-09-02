@@ -16,6 +16,7 @@
   let loaded = $state<Map<string, Reading>>(new Map());
   let error = $state<string | null>(null);
   let showCals = $state(false);
+  let showDelta = $state(false);         // only meaningful with exactly 2 ticked
 
   async function refresh() {
     try {
@@ -117,21 +118,51 @@
   }
 
   const single = $derived(checked.size === 1 ? loaded.get([...checked][0]) ?? null : null);
+  const canDelta = $derived(checked.size === 2);
 
   const plot = $derived.by(() => {
-    const traces = [...checked]
+    const picked = [...checked]
       .map((id) => loaded.get(id))
-      .filter((r): r is Reading => !!r)
-      .map((r) => ({ label: r.meta.name, trace: r.trace }));
-    if (!traces.length) return null;
+      .filter((r): r is Reading => !!r);
+    if (!picked.length) return null;
+    const span0 = picked[0].meta.stop_hz / Math.max(1, picked[0].meta.start_hz);
+    const distr = (span0 > 3 ? 3 : 1) as 1 | 3;
+
+    // Difference view: SWR(B) − SWR(A) on the shared frequency grid.
+    if (showDelta && picked.length === 2) {
+      const [a, b] = picked;
+      const { x, series } = swrSeries([
+        { label: a.meta.name, trace: a.trace },
+        { label: b.meta.name, trace: b.trace },
+      ]);
+      const dy = x.map((_, i) => {
+        const ya = series[0].y[i];
+        const yb = series[1].y[i];
+        return ya == null || yb == null ? null : yb - ya;
+      });
+      const data: uPlot.AlignedData = [x, dy];
+      const opts: uPlot.Options = {
+        width: 600,
+        height: 360,
+        scales: { x: { distr }, y: {} },
+        axes: [
+          { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },
+          { label: "Δ SWR" },
+        ],
+        series: [{}, { label: `Δ SWR (${b.meta.name} − ${a.meta.name})`, stroke: "#e0245e", width: 2 }],
+        plugins: [bandShadePlugin()],
+      };
+      return { data, opts };
+    }
+
+    const traces = picked.map((r) => ({ label: r.meta.name, trace: r.trace }));
     const { x, series } = swrSeries(traces);
     const data: uPlot.AlignedData = [x, ...series.map((s) => s.y)];
-    const span = x.length ? x[x.length - 1] / Math.max(1, x[0]) : 1;
     const palette = ["#1769ff", "#e0245e", "#17bf63", "#f45d22", "#794bc4"];
     const opts: uPlot.Options = {
       width: 600,
       height: 360,
-      scales: { x: { distr: (span > 3 ? 3 : 1) as 1 | 3 }, y: { range: [1, 5] } },
+      scales: { x: { distr }, y: { range: [1, 5] } },
       axes: [
         { label: "MHz", values: (_u, ticks) => ticks.map((t) => (t / 1e6).toFixed(3)) },
         { label: "SWR" },
@@ -166,6 +197,11 @@
 
     <div class="pane">
       {#if error}<p class="error">{error}</p>{/if}
+      {#if canDelta}
+        <label class="muted">
+          <input type="checkbox" bind:checked={showDelta} /> show difference (B − A)
+        </label>
+      {/if}
       {#if plot}
         <UplotChart data={plot.data} opts={plot.opts} />
       {:else}
