@@ -29,6 +29,20 @@ fn readings_dir() -> PathBuf {
     home().join("readings")
 }
 
+/// The path of `<dir>/<id>.<ext>`, or an error if `id` is not a slug.
+/// Ids come over IPC from the webview; this keeps a crafted id such as
+/// `../x` inside the store.
+fn id_path(dir: PathBuf, id: &str, ext: &str) -> Result<PathBuf, String> {
+    let is_slug = !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !is_slug {
+        return Err(format!("invalid id {id:?}"));
+    }
+    Ok(dir.join(format!("{id}.{ext}")))
+}
+
 fn ensure_dir(p: &Path) -> Result<(), String> {
     fs::create_dir_all(p).map_err(|e| format!("creating {}: {e}", p.display()))
 }
@@ -113,13 +127,13 @@ pub fn list_cals() -> Result<Vec<CalMeta>, String> {
 }
 
 pub fn read_cal(id: &str) -> Result<Calibration, String> {
-    let p = cals_dir().join(format!("{id}.json"));
+    let p = id_path(cals_dir(), id, "json")?;
     let s = fs::read_to_string(&p).map_err(|e| format!("reading {}: {e}", p.display()))?;
     serde_json::from_str(&s).map_err(|e| format!("parsing {}: {e}", p.display()))
 }
 
 pub fn write_cal(cal: &Calibration) -> Result<(), String> {
-    let p = cals_dir().join(format!("{}.json", cal.meta.id));
+    let p = id_path(cals_dir(), &cal.meta.id, "json")?;
     let json =
         serde_json::to_string_pretty(cal).map_err(|e| format!("serializing calibration: {e}"))?;
     write_atomic(&p, &json)
@@ -133,7 +147,7 @@ pub fn rename_cal(id: &str, name: &str) -> Result<CalMeta, String> {
 }
 
 pub fn delete_cal(id: &str) -> Result<(), String> {
-    let p = cals_dir().join(format!("{id}.json"));
+    let p = id_path(cals_dir(), id, "json")?;
     fs::remove_file(&p).map_err(|e| format!("deleting {}: {e}", p.display()))
 }
 
@@ -161,13 +175,13 @@ pub fn list_readings() -> Result<Vec<ReadingMeta>, String> {
 }
 
 pub fn read_reading(id: &str) -> Result<Reading, String> {
-    let side_path = readings_dir().join(format!("{id}.json"));
+    let side_path = id_path(readings_dir(), id, "json")?;
     let side = fs::read_to_string(&side_path)
         .map_err(|e| format!("reading {}: {e}", side_path.display()))?;
     let meta: ReadingMeta =
         serde_json::from_str(&side).map_err(|e| format!("parsing {}: {e}", side_path.display()))?;
 
-    let s1p_path = readings_dir().join(format!("{id}.s1p"));
+    let s1p_path = id_path(readings_dir(), id, "s1p")?;
     let s1p = fs::read_to_string(&s1p_path)
         .map_err(|e| format!("reading {}: {e}", s1p_path.display()))?;
     let trace = parse_touchstone(&s1p)?;
@@ -183,20 +197,13 @@ pub fn read_reading(id: &str) -> Result<Reading, String> {
 }
 
 pub fn write_reading(reading: &Reading) -> Result<ReadingMeta, String> {
-    if reading.meta.id.is_empty() {
-        return Err("write_reading: reading has no id/slug".into());
-    }
+    let s1p_path = id_path(readings_dir(), &reading.meta.id, "s1p")?;
+    let side_path = id_path(readings_dir(), &reading.meta.id, "json")?;
     let s1p = render_touchstone(reading);
-    write_atomic(
-        &readings_dir().join(format!("{}.s1p", reading.meta.id)),
-        &s1p,
-    )?;
+    write_atomic(&s1p_path, &s1p)?;
     let side = serde_json::to_string_pretty(&reading.meta)
         .map_err(|e| format!("serializing sidecar: {e}"))?;
-    write_atomic(
-        &readings_dir().join(format!("{}.json", reading.meta.id)),
-        &side,
-    )?;
+    write_atomic(&side_path, &side)?;
     Ok(reading.meta.clone())
 }
 
@@ -206,19 +213,19 @@ pub fn rename_reading(id: &str, name: &str) -> Result<ReadingMeta, String> {
     // rewrite only the sidecar; the .s1p body is unchanged
     let side =
         serde_json::to_string_pretty(&r.meta).map_err(|e| format!("serializing sidecar: {e}"))?;
-    write_atomic(&readings_dir().join(format!("{id}.json")), &side)?;
+    write_atomic(&id_path(readings_dir(), id, "json")?, &side)?;
     Ok(r.meta)
 }
 
 pub fn delete_reading(id: &str) -> Result<(), String> {
-    let a = readings_dir().join(format!("{id}.s1p"));
-    let b = readings_dir().join(format!("{id}.json"));
+    let a = id_path(readings_dir(), id, "s1p")?;
+    let b = id_path(readings_dir(), id, "json")?;
     let _ = fs::remove_file(&a);
     fs::remove_file(&b).map_err(|e| format!("deleting {}: {e}", b.display()))
 }
 
 pub fn export_reading(id: &str, dest: &str) -> Result<(), String> {
-    let src = readings_dir().join(format!("{id}.s1p"));
+    let src = id_path(readings_dir(), id, "s1p")?;
     fs::copy(&src, dest)
         .map(|_| ())
         .map_err(|e| format!("copying {} to {dest}: {e}", src.display()))
@@ -472,6 +479,29 @@ mod tests {
             },
             bandwidth: None,
         }
+    }
+
+    #[test]
+    fn ids_that_are_not_slugs_are_rejected() {
+        let _h = TempHome::new();
+        for bad in ["", "../x", "a/b", "..", "a\\b", "A", "a.b", "/etc/passwd"] {
+            assert!(read_cal(bad).is_err(), "read_cal({bad:?})");
+            assert!(delete_cal(bad).is_err(), "delete_cal({bad:?})");
+            assert!(read_reading(bad).is_err(), "read_reading({bad:?})");
+            assert!(delete_reading(bad).is_err(), "delete_reading({bad:?})");
+            assert!(
+                export_reading(bad, "/dev/null").is_err(),
+                "export_reading({bad:?})"
+            );
+        }
+        // A file outside cals/ must not be reachable by a crafted id.
+        std::fs::create_dir_all(cals_dir()).unwrap();
+        std::fs::write(home().join("outside.json"), "{}").unwrap();
+        let err = read_cal("../outside").unwrap_err();
+        assert!(err.contains("invalid id"), "{err}");
+        assert!(home().join("outside.json").exists());
+        assert!(delete_cal("../outside").is_err());
+        assert!(home().join("outside.json").exists());
     }
 
     #[test]
