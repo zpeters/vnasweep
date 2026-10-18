@@ -2,6 +2,12 @@
 name = "vnasweep"
 version = "0.1.0"
 edition = "2024"
+description = "Calibrate a NanoVNA, sweep an antenna's SWR, and save and overlay the traces."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/zpeters/vnasweep"
+readme = "../README.md"
+keywords = ["nanovna", "vna", "swr", "antenna", "ham-radio"]
+categories = ["science", "gui"]
 
 [[bin]]
 name = "vnasweep"
