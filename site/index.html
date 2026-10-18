@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vnasweep: calibrate, sweep and compare for the NanoVNA</title>
+<meta name="description" content="A small desktop app for the NanoVNA: calibrate, sweep an antenna's SWR, and compare the trace with the last one.">
+<meta property="og:title" content="vnasweep">
+<meta property="og:description" content="Calibrate, sweep and compare for the NanoVNA.">
+<meta property="og:image" content="https://zpeters.github.io/vnasweep/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face { font-family: "Outfit"; src: url("fonts/outfit.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+
+/* Brand (assets/logo): navy-black, teal-to-blue trace, pink marker.
+   The trace gradient is the one accent; pink is only for the min-SWR marker. Radius: 14px. */
+:root {
+	--bg: #f5f7fa;
+	--surface: #e8edf3;
+	--text: #0d1f33;
+	--muted: #475569;
+	--line: #d3dbe5;
+	--grid: #dde4ec;
+	--accent: #0e7490;
+	--btn-bg: #0d1f33;
+	--btn-text: #e6fbff;
+	--code-bg: #0d1f33;
+	--code-text: #e2e8f0;
+	--marker: #d61f57;
+	--ghost: #94a3b8;
+	--band: rgb(34 184 207 / 0.10);
+	--radius: 14px;
+	color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0a1622;
+		--surface: #0f2133;
+		--text: #f1f5f9;
+		--muted: #94a3b8;
+		--line: #1c3249;
+		--grid: #15293d;
+		--accent: #22b8cf;
+		--btn-bg: #22b8cf;
+		--btn-text: #0a1622;
+		--code-bg: #071019;
+		--marker: #e0245e;
+		--ghost: #3b5470;
+		--band: rgb(34 184 207 / 0.08);
+	}
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 1.0625rem/1.6 "Outfit", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; max-width: 100%; height: auto; }
+code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+p code { font-size: 0.86em; background: var(--surface); padding: 0.1em 0.4em; border-radius: 6px; white-space: nowrap; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.grad { background: linear-gradient(90deg, #2dd4bf, #22b8cf 45%, #3b82f6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+nav { height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+.brand img { width: 32px; height: 32px; border-radius: 8px; }
+nav .links { display: flex; gap: 28px; }
+nav .links a { color: var(--muted); text-decoration: none; }
+nav .links a:hover { color: var(--text); }
+
+/* Hero: copy left, live chart right. */
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 56px; align-items: center; padding: 48px 0 96px; }
+h1 { font-size: clamp(2.3rem, 3.6vw, 3rem); line-height: 1.03; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 22px; }
+.lede { font-size: 1.22rem; color: var(--muted); max-width: 36ch; margin: 0 0 34px; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; height: 50px; padding: 0 24px; border-radius: var(--radius); font: 600 1.05rem "Outfit", sans-serif; text-decoration: none; white-space: nowrap; cursor: pointer; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s; }
+.btn:active { transform: translateY(1px) scale(0.98); }
+.btn.primary { background: var(--btn-bg); color: var(--btn-text); border: 0; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.secondary { border: 1px solid var(--line); background: transparent; color: var(--text); }
+.btn.secondary:hover { background: var(--surface); }
+
+.scope { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 18px 14px; }
+.scope svg { display: block; width: 100%; height: auto; }
+.scope .axis { font: 500 11px "JetBrains Mono", monospace; fill: var(--muted); }
+.scope .gridline { stroke: var(--grid); stroke-width: 1; }
+.scope .limit { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 5; opacity: 0.7; }
+.scope .band { fill: var(--band); }
+.scope .ghost { fill: none; stroke: var(--ghost); stroke-width: 2; }
+.scope .trace { fill: none; stroke: url(#trace); stroke-width: 3; stroke-linecap: round; }
+.scope .mark { fill: none; stroke: var(--marker); stroke-width: 2.5; }
+.readout { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 12px 4px 0; border-top: 1px solid var(--line); margin-top: 8px; }
+.readout dl { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0; font-family: "JetBrains Mono", monospace; font-size: 0.86rem; }
+.readout dt { color: var(--muted); display: inline; }
+.readout dd { display: inline; margin: 0 0 0 6px; font-variant-numeric: tabular-nums; }
+.readout dd.min { color: var(--marker); font-weight: 600; }
+.resweep { font: 600 0.9rem "Outfit", sans-serif; color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; cursor: pointer; }
+.resweep:hover { background: var(--bg); }
+
+section { padding: 104px 0; }
+h2 { font-size: clamp(1.9rem, 3.4vw, 2.7rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 16px; }
+.intro { color: var(--muted); font-size: 1.15rem; max-width: 58ch; margin: 0 0 44px; }
+
+/* Workflow: screenshot left, four verbs right. */
+.flow { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.flow ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 30px; }
+.flow li { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: baseline; }
+.flow .verb { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+.flow p { margin: 0; color: var(--muted); }
+
+/* Files band */
+.files { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0; border-radius: var(--radius); overflow: hidden; background: var(--code-bg); color: var(--code-text); }
+.files pre { margin: 0; padding: 36px 40px; font-size: 0.95rem; line-height: 1.8; overflow-x: auto; }
+.files pre .c { color: #64748b; }
+.files pre .d { color: #22b8cf; }
+.files aside { padding: 36px 40px; border-left: 1px solid #1c3249; display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+.files aside p { margin: 0; color: #a5b4c6; }
+.files aside code { color: #e2e8f0; }
+
+/* Facts: four tiles. */
+.facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.fact { background: var(--surface); border-radius: var(--radius); padding: 26px; display: flex; flex-direction: column; gap: 8px; }
+.fact .big { font-family: "JetBrains Mono", monospace; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+.fact p { margin: 0; color: var(--muted); }
+.fact.k .big span { display: inline-grid; place-items: center; min-width: 44px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 10px; font-size: 1rem; background: var(--bg); }
+
+/* Install */
+.install { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.platform { border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; display: flex; flex-direction: column; gap: 12px; }
+.platform h3 { margin: 0; font-size: 1.3rem; }
+.platform p { margin: 0; color: var(--muted); }
+.platform pre { margin: auto 0 0; background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 14px 16px; font-size: 0.8rem; overflow-x: auto; }
+
+footer { padding: 36px 0 56px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 0.95rem; }
+
+@media (max-width: 1023px) {
+	.facts { grid-template-columns: repeat(2, 1fr); }
+	.install { grid-template-columns: 1fr; }
+}
+@media (max-width: 767px) {
+	.wrap { padding: 0 16px; }
+	nav .links a:not(:last-child) { display: none; }
+	.hero, .flow { grid-template-columns: 1fr; gap: 40px; }
+	.hero { padding: 24px 0 64px; }
+	section { padding: 72px 0; }
+	.flow li { grid-template-columns: 1fr; gap: 4px; }
+	.files { grid-template-columns: 1fr; }
+	.files aside { border-left: 0; border-top: 1px solid #1c3249; }
+	.files pre, .files aside { padding: 26px 22px; }
+	.facts { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+	<nav>
+		<a class="brand" href="./"><img src="icon.svg" alt="">vnasweep</a>
+		<div class="links">
+			<a href="#how">How it works</a>
+			<a href="#install">Install</a>
+			<a href="https://github.com/zpeters/vnasweep">GitHub</a>
+		</div>
+	</nav>
+
+	<header class="hero">
+		<div>
+			<h1>Sweep your antenna.<br><span class="grad">Compare with last time.</span></h1>
+			<p class="lede">A small desktop app for the NanoVNA. It calibrates, sweeps SWR and compares traces, and does nothing else.</p>
+			<div class="ctas">
+				<a class="btn primary" href="https://github.com/zpeters/vnasweep/releases/latest">Download</a>
+				<a class="btn secondary" href="https://github.com/zpeters/vnasweep">View source</a>
+			</div>
+		</div>
+
+		<figure class="scope" aria-label="Example SWR sweep of a 2 m antenna from 140 to 150 MHz">
+			<svg id="chart" viewBox="0 0 600 340" role="img">
+				<defs>
+					<linearGradient id="trace" x1="0" x2="1" y1="0" y2="0">
+						<stop offset="0" stop-color="#2dd4bf"/><stop offset="0.45" stop-color="#22b8cf"/><stop offset="1" stop-color="#3b82f6"/>
+					</linearGradient>
+				</defs>
+				<g id="frame"></g>
+				<path id="ghost" class="ghost" d=""/>
+				<path id="trace-path" class="trace" d=""/>
+				<circle id="mark" class="mark" r="6" cx="-20" cy="-20"/>
+			</svg>
+			<figcaption class="readout">
+				<dl>
+					<div><dt>min SWR</dt><dd class="min" id="r-swr">-</dd></div>
+					<div><dt>at</dt><dd id="r-f">-</dd></div>
+					<div><dt>R ± jX</dt><dd id="r-z">-</dd></div>
+					<div><dt>SWR ≤ 2</dt><dd id="r-bw">-</dd></div>
+				</dl>
+				<button class="resweep" id="resweep" type="button">Sweep again</button>
+			</figcaption>
+		</figure>
+	</header>
+</div>
+
+<section id="how" style="padding-top: 24px">
+	<div class="wrap flow">
+		<img src="screenshot.png" width="1504" height="1264" alt="vnasweep's Measure tab with a stored calibration and its health check" loading="lazy">
+		<div>
+			<h2>The usual job, quickly.</h2>
+			<p class="intro">The stock software and NanoVNA-Saver can do much more. vnasweep does this one job well.</p>
+			<ol>
+				<li><span class="verb grad">Calibrate</span><p>A 3-step Open, Short, Load wizard. A health check finds a swapped or loose standard.</p></li>
+				<li><span class="verb grad">Sweep</span><p>One sweep or live sweeps. A marker shows minimum SWR, R ± jX and return loss. Amateur bands are shaded.</p></li>
+				<li><span class="verb grad">Compare</span><p>Name a reading. Show several on one plot, or the difference between two.</p></li>
+				<li><span class="verb grad">Diagnose</span><p>Plot the app's correction, the device's correction and the raw data together.</p></li>
+			</ol>
+		</div>
+	</div>
+</section>
+
+<section style="padding-top: 0">
+	<div class="wrap">
+		<h2>Your readings are plain files.</h2>
+		<p class="intro">Open them in other tools, diff them, and keep them in git. There is no account and no telemetry.</p>
+		<div class="files">
+<pre><span class="d">~/vnasweep/</span>
+  cals/
+    2m-dipole.json     <span class="c"># span, points and the raw O/S/L captures</span>
+  readings/
+    2m-dipole-may.s1p  <span class="c"># Touchstone S11, RI format</span>
+    2m-dipole-may.json <span class="c"># name, date and calibration</span></pre>
+			<aside>
+				<p>Export any reading as <code>.s1p</code> or <code>.csv</code>.</p>
+				<p>Set <code>VNASWEEP_HOME</code> to keep them in a different folder.</p>
+			</aside>
+		</div>
+	</div>
+</section>
+
+<section style="padding-top: 0">
+	<div class="wrap facts">
+		<div class="fact k"><div class="big"><span>Space</span></div><p>Sweep once.</p></div>
+		<div class="fact k"><div class="big"><span>L</span></div><p>Start or stop live sweeps.</p></div>
+		<div class="fact"><div class="big">1.5 / 2 / 3</div><p>Bandwidth at each SWR limit, shown for every sweep.</p></div>
+		<div class="fact"><div class="big">NanoVNA-H</div><p>Tested with firmware 1.2.27 on macOS.</p></div>
+	</div>
+</section>
+
+<section id="install" style="padding-top: 0">
+	<div class="wrap">
+		<h2>Install it.</h2>
+		<p class="intro">Downloads are on the latest GitHub release.</p>
+		<div class="install">
+			<div class="platform">
+				<h3>macOS</h3>
+				<p>Open the <code>.dmg</code> (Apple Silicon) and drag vnasweep into Applications. The app is not notarised yet, so allow it in <strong>Privacy &amp; Security</strong>, or run:</p>
+<pre>xattr -dr com.apple.quarantine \
+  /Applications/vnasweep.app</pre>
+			</div>
+			<div class="platform">
+				<h3>Linux</h3>
+				<p>Use the <code>.deb</code> or the <code>.AppImage</code>. To use the NanoVNA without root, join the <code>dialout</code> group (<code>uucp</code> on Arch).</p>
+<pre>sudo usermod -aG dialout $USER</pre>
+			</div>
+			<div class="platform">
+				<h3>From source</h3>
+				<p>You need Rust from rustup. The Nix flake and direnv supply <code>just</code> and Node.js.</p>
+<pre>git clone https://github.com/zpeters/vnasweep
+cd vnasweep && just tauri-dev</pre>
+			</div>
+		</div>
+	</div>
+</section>
+
+<div class="wrap">
+	<footer>
+		<span>vnasweep is free software under the GPL-3.0-or-later.</span>
+		<a href="https://github.com/zpeters/vnasweep">github.com/zpeters/vnasweep</a>
+	</footer>
+</div>
+
+<script>
+// The hero chart: SWR of a series-resonant antenna model, 140 to 150 MHz.
+// Z(f) = R + jX0 (f/f0 - f0/f); Γ = (Z - 50) / (Z + 50); SWR = (1 + |Γ|) / (1 - |Γ|).
+const W = 600, H = 340, L = 44, R = 14, T = 12, B = 30;
+const F0 = 140, F1 = 150, SMAX = 5, N = 201;
+const x = (f) => L + (f - F0) / (F1 - F0) * (W - L - R);
+const y = (s) => T + (1 - (Math.min(s, SMAX) - 1) / (SMAX - 1)) * (H - T - B);
+const svgNS = "http://www.w3.org/2000/svg";
+const el = (name, attrs) => { const e = document.createElementNS(svgNS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+const frame = document.getElementById("frame");
+frame.append(el("rect", { class: "band", x: x(144), y: T, width: x(148) - x(144), height: H - T - B }));
+for (let s = 1; s <= SMAX; s++) {
+	frame.append(el("line", { class: "gridline", x1: L, x2: W - R, y1: y(s), y2: y(s) }));
+	const t = el("text", { class: "axis", x: L - 10, y: y(s) + 4, "text-anchor": "end" }); t.textContent = s; frame.append(t);
+}
+for (let f = F0; f <= F1; f += 2) {
+	frame.append(el("line", { class: "gridline", x1: x(f), x2: x(f), y1: T, y2: H - B }));
+	const last = f === F1;
+	const t = el("text", { class: "axis", x: x(f), y: H - 8, "text-anchor": last ? "end" : "middle" }); t.textContent = last ? `${f} MHz` : f; frame.append(t);
+}
+frame.append(el("line", { class: "limit", x1: L, x2: W - R, y1: y(2), y2: y(2) }));
+const bandLabel = el("text", { class: "axis", x: x(146), y: T + 16, "text-anchor": "middle" }); bandLabel.textContent = "2 m band"; frame.append(bandLabel);
+
+function sweep(f0, r, x0) {
+	const pts = [];
+	for (let i = 0; i < N; i++) {
+		const f = F0 + (F1 - F0) * i / (N - 1);
+		const xr = x0 * (f / f0 - f0 / f);
+		// |Γ|² for Z = r + jxr against 50 Ω
+		const g2 = ((r - 50) ** 2 + xr ** 2) / ((r + 50) ** 2 + xr ** 2);
+		const g = Math.sqrt(g2);
+		pts.push({ f, s: (1 + g) / (1 - g), r, xr });
+	}
+	return pts;
+}
+const pathOf = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(p.f).toFixed(1)},${y(p.s).toFixed(1)}`).join("");
+
+const trace = document.getElementById("trace-path");
+const ghost = document.getElementById("ghost");
+const mark = document.getElementById("mark");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let last = null;
+
+function show(pts) {
+	const min = pts.reduce((a, b) => (b.s < a.s ? b : a));
+	const under = pts.filter((p) => p.s <= 2);
+	const bw = under.length ? under[under.length - 1].f - under[0].f : 0;
+	document.getElementById("r-swr").textContent = min.s.toFixed(2);
+	document.getElementById("r-f").textContent = `${min.f.toFixed(2)} MHz`;
+	document.getElementById("r-z").textContent = `${min.r.toFixed(1)} ${min.xr < 0 ? "-" : "+"} j${Math.abs(min.xr).toFixed(1)} Ω`;
+	document.getElementById("r-bw").textContent = `${bw.toFixed(2)} MHz`;
+	mark.setAttribute("cx", x(min.f)); mark.setAttribute("cy", y(min.s));
+}
+
+function run() {
+	if (last) ghost.setAttribute("d", pathOf(last));
+	// A new reading: the resonance drifts a little, as after trimming an element.
+	const pts = sweep(144.6 + Math.random() * 1.4, 52 + Math.random() * 12, 750 + Math.random() * 350);
+	trace.setAttribute("d", pathOf(pts));
+	mark.style.opacity = 0;
+	const finish = () => { show(pts); mark.style.opacity = 1; };
+	if (reduce) { finish(); }
+	else {
+		const len = trace.getTotalLength();
+		trace.style.transition = "none";
+		trace.style.strokeDasharray = len;
+		trace.style.strokeDashoffset = len;
+		trace.getBoundingClientRect();
+		trace.style.transition = "stroke-dashoffset 1.1s cubic-bezier(0.45, 0, 0.25, 1)";
+		trace.style.strokeDashoffset = 0;
+		setTimeout(finish, 1100);
+	}
+	last = pts;
+}
+
+document.getElementById("resweep").addEventListener("click", run);
+run();
+</script>
+</body>
+</html>

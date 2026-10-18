@@ -154,3 +154,7 @@ PRs.** Push `main` directly when a unit of work is done and green.
 - The `sweep` command grid-checks the device's returned frequencies
   against the calibration's grid before applying correction (`check_grid`
   in `main.rs`) — a mismatch means re-run the cal for that span.
+
+## Website
+
+`site/` is the GitHub Pages site (https://zpeters.github.io/vnasweep/): one static `index.html`, self-hosted fonts and copies of the screenshot and logo. `.github/workflows/pages.yml` deploys it when `site/` changes on `main`. Keep it in step with the README when features change. No em-dashes in its copy.

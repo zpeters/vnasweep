@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <a href="https://zpeters.github.io/vnasweep/"><b>Website</b></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/zpeters/vnasweep/actions/workflows/ci.yml"><img src="https://github.com/zpeters/vnasweep/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-0d1f33" alt="License: GPL-3.0-or-later"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-22b8cf" alt="Platform: macOS and Linux">
