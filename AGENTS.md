@@ -146,7 +146,7 @@ PRs.** Push `main` directly when a unit of work is done and green.
   `frequencies` → `data 0` (S11 as `re im` lines) → `cal on`. The fixed
   `SETTLE` is the one remaining unverified timing assumption — if sweeps
   come back with garbage on some points, poll for completion instead
-  (there is a GitHub issue for this).
+  (issue #2).
 - **Stored calibration standards are raw** (`cal off`) captures, not
   ideal values — a raw NanoVNA open reads |Γ| ≈ 0.6–0.9, not 1.0. The
   `cal::health` thresholds account for this; don't tighten them back to
