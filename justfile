@@ -49,3 +49,9 @@ check: deps
     cargo test --manifest-path src-tauri/Cargo.toml
     npm run check
     npm test
+
+# Render the README banner and the GitHub social preview from their SVG
+# sources. The wordmark needs the Avenir Next font (it ships with macOS).
+logo:
+    resvg -w 1800 assets/logo/banner.svg assets/logo/banner.png
+    resvg -w 1280 -h 640 assets/logo/social.svg assets/logo/social.png

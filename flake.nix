@@ -23,6 +23,7 @@
           packages = [
             pkgs.just
             pkgs.nodejs
+            pkgs.resvg # renders assets/logo/*.svg (just logo)
           ];
         };
       }

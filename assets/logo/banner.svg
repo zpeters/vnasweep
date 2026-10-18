@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="480" viewBox="0 0 900 240">
+<!-- vnasweep README banner: the app icon plus a wordmark. Set in Avenir Next
+     (ships with macOS); banner.png is the rendered copy the README uses.
+     Re-render with `just logo`. -->
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f2338"/>
+      <stop offset="1" stop-color="#0a1622"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1f33"/>
+      <stop offset="1" stop-color="#0a1622"/>
+    </linearGradient>
+    <linearGradient id="trace" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="0.5" stop-color="#22b8cf"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <linearGradient id="ghost" gradientUnits="userSpaceOnUse" x1="680" y1="0" x2="900" y2="0">
+      <stop offset="0" stop-color="#22b8cf" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#22b8cf" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="0.2"/>
+    </linearGradient>
+    <clipPath id="cardclip"><rect width="900" height="240" rx="28"/></clipPath>
+  </defs>
+
+  <rect width="900" height="240" rx="28" fill="url(#card)"/>
+
+  <!-- faint plot grid and a wide, dim sweep trace behind everything -->
+  <g clip-path="url(#cardclip)">
+    <g stroke="#ffffff" stroke-opacity="0.045" stroke-width="1">
+      <line x1="0" y1="60" x2="900" y2="60"/><line x1="0" y1="120" x2="900" y2="120"/>
+      <line x1="0" y1="180" x2="900" y2="180"/>
+      <line x1="300" y1="0" x2="300" y2="240"/><line x1="450" y1="0" x2="450" y2="240"/>
+      <line x1="600" y1="0" x2="600" y2="240"/><line x1="750" y1="0" x2="750" y2="240"/>
+    </g>
+    <path d="M 680 52 C 780 52 780 196 822 196 C 864 196 864 52 954 52"
+          fill="none" stroke="url(#ghost)" stroke-width="5"/>
+    <circle cx="822" cy="196" r="5" fill="none" stroke="#e0245e" stroke-opacity="0.35" stroke-width="2"/>
+  </g>
+
+  <!-- the app icon (src-tauri/icons/icon.svg), scaled to a 168px tile -->
+  <g transform="translate(36 36) scale(0.1640625)">
+    <rect x="32" y="32" width="960" height="960" rx="200" fill="url(#tile)"
+          stroke="#ffffff" stroke-opacity="0.08" stroke-width="6"/>
+    <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="4">
+      <line x1="160" y1="300" x2="864" y2="300"/><line x1="160" y1="440" x2="864" y2="440"/>
+      <line x1="160" y1="580" x2="864" y2="580"/><line x1="160" y1="720" x2="864" y2="720"/>
+    </g>
+    <path d="M 150 388 C 372 388 372 772 512 772 C 652 772 652 388 874 388"
+          fill="none" stroke="url(#trace)" stroke-width="34"
+          stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <circle cx="512" cy="772" r="30" fill="#0a1622" stroke="#e0245e" stroke-width="14"/>
+    <circle cx="512" cy="772" r="9" fill="#e0245e"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="236" y="128" font-family="Avenir Next" font-weight="700" font-size="76"
+        letter-spacing="-1.5" fill="#f1f5f9">vna<tspan fill="url(#trace)">sweep</tspan></text>
+  <text x="240" y="170" font-family="Avenir Next" font-weight="500" font-size="22"
+        letter-spacing="0.5" fill="#94a3b8">calibrate · sweep · compare <tspan fill="#e0245e">●</tspan> for the NanoVNA</text>
+</svg>
