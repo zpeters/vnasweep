@@ -18,6 +18,10 @@ Each reading is a Touchstone `.s1p` file plus a small JSON file, in a
 folder in your home directory. You can open them in other tools, diff
 them, and keep them in git. There is no account and no telemetry.
 
+<p align="center">
+  <img src="assets/screenshots/main.png" alt="vnasweep's Measure tab with a stored calibration and its health check" width="640">
+</p>
+
 ## Features
 
 - **Calibrate.** A 3-step Open / Short / Load wizard makes a one-port
