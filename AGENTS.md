@@ -13,7 +13,7 @@ Current state: **v1, validated on hardware** (2026-09-02). In-app OSL
 calibration, one-shot + live SWR sweep, flat-file storage, overlay /
 compare / difference, CSV export, serial port picker, and a diagnostics
 pass (health check + 3-way sweep). See `README.md` for the feature list
-and `TODO.md` for deferred fine-tuning.
+and GitHub Issues (`zpeters/vnasweep`) for deferred fine-tuning and ideas.
 
 Tauri 2 (Rust backend) + Svelte 5 (frontend). Target hardware: NanoVNA-H
 (USB VID:PID `0483:5740`), on macOS and Linux. Single user, local use.
@@ -74,17 +74,31 @@ Cross-project coding philosophy lives in `~/.claude/PHILOSOPHY.md` and
 
 ## Dev environment
 
-Nix flake (`flake.nix`) + direnv (`.envrc`) provide `just` and Node/npm.
+Nix flake (`flake.nix`) + direnv (`.envrc`) provide `just`, Node/npm and
+`resvg`.
 Rust/Cargo comes from your own `rustup`, not the flake. (`mkShellNoCC`
 is deliberate — see the comment in `flake.nix`.)
 
 ```
-npm install       # once
-just              # list recipes
+just              # list recipes (JS deps install themselves via `deps`)
 just tauri-dev    # opens the app with hot reload
 just check        # cargo fmt --check + clippy -D warnings + cargo test + npm run check + npm test
 just install      # release bundle -> /Applications/vnasweep.app (macOS)
+just dmg          # ad-hoc signed .dmg -> target/release/bundle/dmg/
+just logo         # assets/logo/*.svg -> *.png (README banner, social preview)
 ```
+
+CI (`.github/workflows/ci.yml`) runs `just check` on macOS and Linux.
+`release.yml` runs on a `v*` tag: it checks the tag against the version
+in `tauri.conf.json`, `Cargo.toml` and `package.json` (keep all three
+equal), builds a `.dmg` and Linux `.deb` / `.AppImage` with
+`tauri-action`, and attaches them to a draft release. Dependabot opens
+weekly grouped updates for crates, npm and Actions.
+
+The webview has a CSP (`app.security` in `tauri.conf.json`). It allows
+inline styles (Svelte `style=`, uPlot) but no inline or remote scripts
+and no network except Tauri IPC. Store ids from IPC go through
+`store::id_path`, which rejects anything that is not a slug.
 
 ## Version control
 
@@ -98,7 +112,8 @@ jj new
 # ... changes ...
 jj describe -m 'Message'
 jj bookmark set main -r @
-jj git push --bookmark main   # remote 'origin' -> git:/git/vnasweep.git
+jj git push --bookmark main                   # remote 'origin' -> git:/git/vnasweep.git
+jj git push --bookmark main --remote github   # public mirror -> github.com/zpeters/vnasweep
 ```
 
 Personal project: **merge locally, never push feature branches or open
@@ -131,7 +146,7 @@ PRs.** Push `main` directly when a unit of work is done and green.
   `frequencies` → `data 0` (S11 as `re im` lines) → `cal on`. The fixed
   `SETTLE` is the one remaining unverified timing assumption — if sweeps
   come back with garbage on some points, poll for completion instead
-  (`TODO.md`).
+  (there is a GitHub issue for this).
 - **Stored calibration standards are raw** (`cal off`) captures, not
   ideal values — a raw NanoVNA open reads |Γ| ≈ 0.6–0.9, not 1.0. The
   `cal::health` thresholds account for this; don't tighten them back to
