@@ -1,0 +1,128 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds a macOS disk image and Linux .deb and
+# .AppImage packages, then attaches them to a draft GitHub release. Edit the
+# notes and publish it by hand. If a release for the tag already exists,
+# the files are uploaded to it instead.
+#
+# "Run workflow" on the Actions tab does the same for a tag that already
+# exists. A pull request that changes this file runs the build jobs only
+# (the bundles become workflow artifacts), so the workflow can be tested
+# before a tag needs it.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to build and release, such as v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # The tag being released; empty on a pull request.
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - id: v
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # The tag, tauri.conf.json, Cargo.toml and package.json must agree,
+          # so the files carry the right number.
+          cargo_version=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          npm_version=$(jq -r .version package.json)
+          if [ "$cargo_version" != "$version" ] || [ "$npm_version" != "$version" ]; then
+            echo "::error::Versions differ: tauri.conf.json $version, Cargo.toml $cargo_version, package.json $npm_version"
+            exit 1
+          fi
+          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match version $version"
+            exit 1
+          fi
+      # Make the draft once here, so the two build jobs do not race to make it.
+      - if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          cat > notes.md <<'NOTES'
+          **macOS (Apple Silicon):** open the `.dmg` and drag **vnasweep** into
+          **Applications**. The app is not notarised yet. After the first try,
+          open it from System Settings → Privacy & Security → Open Anyway, or run
+          `xattr -dr com.apple.quarantine /Applications/vnasweep.app`.
+
+          **Linux (x86_64):** install the `.deb`, or `chmod +x` the `.AppImage`
+          and run it. To use the NanoVNA without root, add yourself to the
+          `dialout` group (`uucp` on Arch) and log in again.
+          NOTES
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --draft \
+              --title "vnasweep $VERSION" \
+              --notes-file notes.md \
+              --generate-notes
+          fi
+
+  build:
+    needs: version
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon. Intel Macs are not built.
+          - os: macos-latest
+            bundles: app,dmg
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev libudev-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tagName: ${{ env.TAG }}
+          args: --bundles ${{ matrix.bundles }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ runner.os }}
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

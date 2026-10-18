@@ -19,6 +19,11 @@ tauri-dev: deps
 tauri-build: deps
     npm run tauri build
 
+# Build a drag-to-install disk image (macOS), ad-hoc signed, into
+# target/release/bundle/dmg/. CI's release workflow builds the same thing.
+dmg: deps
+    npm run tauri build -- --bundles app,dmg
+
 # Build the release bundle and install it to /Applications (macOS).
 install: tauri-build
     rm -rf /Applications/vnasweep.app
