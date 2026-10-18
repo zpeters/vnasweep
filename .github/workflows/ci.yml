@@ -37,3 +37,8 @@ jobs:
       # The same gate as local: fmt, clippy -D warnings, cargo test,
       # svelte-check and vitest.
       - run: just check
+      # `tauri build` is the only step that checks the Tauri crates and npm
+      # packages are on the same minor version. Dependabot bumps them in
+      # separate PRs, so build once (debug, no bundle) to catch a mismatch.
+      - if: runner.os == 'Linux'
+        run: npm run tauri build -- --debug --no-bundle
